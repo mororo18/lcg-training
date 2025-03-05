@@ -1,7 +1,3 @@
-[submodule "raylib"]
+[submodule "external/raylib"]
 	path = external/raylib
 	url = https://github.com/raysan5/raylib.git
-	shallow = true
-[submodule "external/raygui"]
-	path = external/raygui
-	url = https://github.com/raysan5/raygui.git
