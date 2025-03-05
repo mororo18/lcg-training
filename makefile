@@ -1,8 +1,11 @@
-CC=gcc
 CFLAGS = -std=c2x -Wall -Wextra -Wpedantic -Wconversion -g
 
-SRC = main.c
+SRC_DIR = src
+SRC = main.c player.c bullet.c enemy.c
+HEADERS = window.h player.h bullet.h enemy.h
 TARGET = game
+
+OBJ_WITH_PATH = $(patsubst %.c, $(SRC_DIR)/%.o, $(SRC))
 
 RAYLIB_DIR = $(CURDIR)/external/raylib/src
 
@@ -23,8 +26,11 @@ RAYLIB_INC = -I$(RAYLIB_DIR) -L$(RAYLIB_DIR) -lraylib
 
 all: $(TARGET)
 
-$(TARGET): $(SRC) $(RAYLIB_DIR)/$(RAYLIB)
+$(TARGET): $(OBJ_WITH_PATH) $(RAYLIB_DIR)/$(RAYLIB)
 	$(CC) $(CFLAGS) -o $@ $^ $(RAYLIB_INC)
+
+$(SRC_DIR)/%.o: $(SRC_DIR)/%.c $(wildcard $(SRC_DIR)/%.h)
+	$(CC) $(CFLAGS) -c $^ -o $@ $(RAYLIB_INC)
 
 $(RAYLIB_DIR)/$(RAYLIB):
 	$(MAKE) PLATFORM=PLATFORM_DESKTOP RAYLIB_LIBTYPE=SHARED -C $(RAYLIB_DIR) 
@@ -37,7 +43,7 @@ run: clean $(TARGET)
 	$(RUN_CMD)
 
 clean:
-	$(RM) $(TARGET) $(RAYLIB_DIR)/$(RAYLIB)
+	$(RM) $(TARGET) $(OBJ_WITH_PATH) $(RAYLIB_DIR)/$(RAYLIB)
 
 clean-all: clean
 	$(MAKE) -C $(RAYLIB_DIR) clean
