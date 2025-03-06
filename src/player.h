@@ -8,10 +8,12 @@ typedef
 struct Player {
     Rectangle rect;
     Vector2 position;
-    float velocity;
-    bool is_alive;
+    int life;
+    int enemies_defeated;
 } Player;
 
 Player default_Player();
+
+extern const float PLAYER_VELOCITY;
 
 #endif // _PLAYER_H

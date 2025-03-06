@@ -21,8 +21,10 @@ struct EnemyArray {
 
 extern const float ENEMY_VELOCITY;
 extern const float ENEMY_RADIUS;
+extern const float ENEMY_AWARENESS_RADIUS;
 extern const size_t MAX_ENEMIES;
 
+Vector2 random_Enemy_direction(Enemy * enemy);
 EnemyArray new_EnemyArray();
 void increase_capacity_of_EnemyArray(EnemyArray * array, size_t capacity_increase);
 void push_to_EnemyArray(EnemyArray * array, Enemy bullet);

@@ -1,7 +1,7 @@
 #include "bullet.h"
 #include <string.h>
 
-const float BULLET_VELOCITY = 5.0;
+const float BULLET_VELOCITY = 200.0;
 const size_t INITIAL_ARRAY_CAPACITY = 10;
 
 BulletArray new_BulletArray() {
