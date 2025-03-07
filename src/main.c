@@ -154,7 +154,7 @@ void update_GameState(GameState * state) {
     }
 
 
-    // Update position of the enemies
+    // Update position of the enemies and check collision
     for (int i = 0; i < (int) state->enemies.lenght; i++) {
 
         float player_distance = Vector2Distance(
@@ -225,8 +225,6 @@ void update_GameState(GameState * state) {
         const int n_directions = sizeof(possible_directions) / sizeof(Vector2);
         const size_t new_enemies = MAX_ENEMIES - state->enemies.lenght;
         for (int i = 0; i < (int) new_enemies; i++) {
-
-
             Vector2 rand_direction = Vector2Normalize(possible_directions[rand() % n_directions]);
 
             Enemy new_enemy = {
@@ -250,7 +248,7 @@ int main(void) {
 
     srand((unsigned int) clock());
 
-    InitWindow((int) window_rect.width, (int) window_rect.height, "little candle games - trainning");
+    InitWindow((int) window_rect.width, (int) window_rect.height, "little candle games - training");
     InitAudioDevice();
 
     SetTargetFPS(60);

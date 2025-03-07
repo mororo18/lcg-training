@@ -4,8 +4,8 @@ install the [raylib dependencies](https://github.com/raysan5/raylib/wiki/Working
 
 ## build and run
 ```
-git clone https://github.com/mororo18/lcg-trainning.git
-cd lcg-trainning
+git clone https://github.com/mororo18/lcg-training.git
+cd lcg-training
 git submodule update --init --recursive
 make run
 ```
