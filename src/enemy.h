@@ -6,6 +6,8 @@
 #include <stdlib.h>
 #include <err.h>
 
+#define ENEMY_ARRAY_CAPACITY 128
+
 typedef
 struct Enemy {
     Vector2 position;
@@ -14,8 +16,7 @@ struct Enemy {
 
 typedef
 struct EnemyArray {
-    Enemy * ptr;
-    size_t capacity;
+    Enemy data[ENEMY_ARRAY_CAPACITY];
     size_t lenght;
 } EnemyArray;
 
@@ -26,7 +27,6 @@ extern const size_t MAX_ENEMIES;
 
 Vector2 random_Enemy_direction(Enemy * enemy);
 EnemyArray new_EnemyArray();
-void increase_capacity_of_EnemyArray(EnemyArray * array, size_t capacity_increase);
 void push_to_EnemyArray(EnemyArray * array, Enemy bullet);
 void remove_from_EnemyArray(EnemyArray * array, size_t index);
 

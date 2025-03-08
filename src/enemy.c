@@ -32,42 +32,19 @@ Vector2 random_Enemy_direction(Enemy * enemy) {
 
 EnemyArray new_EnemyArray() {
     EnemyArray array = {
-        .ptr = calloc(INITIAL_ARRAY_CAPACITY, sizeof(Enemy)),
-        .capacity = INITIAL_ARRAY_CAPACITY,
+        .data = {},
         .lenght = 0,
     };
-
-    if (array.ptr == NULL) {
-        err(EXIT_FAILURE, "calloc");
-    }
 
     return array;
 }
 
-void increase_capacity_of_EnemyArray(EnemyArray * array, size_t capacity_increase) {
-
-    if (capacity_increase == 0) {
-        return;
-    }
-
-    Enemy * new_ptr = calloc(
-        array->capacity + capacity_increase,
-        sizeof(Enemy)
-    );
-
-    memcpy(new_ptr, array->ptr, array->lenght * sizeof(Enemy));
-    free(array->ptr);
-    array->ptr = new_ptr;
-    array->capacity += capacity_increase;
-}
-
 void push_to_EnemyArray(EnemyArray * array, Enemy bullet) {
-    if (array->lenght == array->capacity) {
-        // Doubles the array capacity
-        increase_capacity_of_EnemyArray(array, array->capacity);
+    if (array->lenght == ENEMY_ARRAY_CAPACITY) {
+        err(EXIT_FAILURE, "EnemyArray is full");
     }
 
-    array->ptr[array->lenght] = bullet;
+    array->data[array->lenght] = bullet;
     array->lenght++;
 }
 
@@ -76,6 +53,6 @@ void remove_from_EnemyArray(EnemyArray * array, size_t index) {
         err(EXIT_FAILURE, "index out of bounds");
     }
 
-    array->ptr[index] = array->ptr[array->lenght-1];
+    array->data[index] = array->data[array->lenght-1];
     array->lenght--;
 }

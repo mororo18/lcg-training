@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <float.h>
 #include <raylib.h>
 #include <raymath.h>
 
@@ -24,6 +25,7 @@ typedef
 struct GameState {
     Player player;
     BulletArray bullets;
+    double last_bullet_timestamp;
     EnemyArray enemies;
     bool game_over;
     float dt;
@@ -96,14 +98,24 @@ void update_GameState(GameState * state) {
     state->player.rect.x = state->player.position.x;
     state->player.rect.y = state->player.position.y;
 
+    if (state->player.boost_enabled) {
+        state->player.remaining_boost_time -= state->dt;
+
+        if (state->player.remaining_boost_time <= 0.0) {
+            state->player.remaining_boost_time = 0.0;
+            state->player.boost_req_defeats = 0;
+            state->player.boost_enabled = false;
+        }
+    }
+
     // Update the positions of the bullets and check for collisions
     for (int i = 0; i < (int) state->bullets.lenght; i++) {
-        Vector2 * bullet_pos = &state->bullets.ptr[i].position;
-        Vector2 * bullet_direction = &state->bullets.ptr[i].direction;
+        Vector2 * bullet_pos = &state->bullets.data[i].position;
+        Vector2 * bullet_direction = &state->bullets.data[i].direction;
 
         // Check enemy elimination 
         for (int enemy_index = 0; enemy_index < (int) state->enemies.lenght; enemy_index++) {
-            Vector2 enemy_pos = state->enemies.ptr[enemy_index].position;
+            Vector2 enemy_pos = state->enemies.data[enemy_index].position;
             if (CheckCollisionPointCircle(*bullet_pos, enemy_pos, ENEMY_RADIUS)) {
                 // Remove enemy
                 remove_from_EnemyArray(&state->enemies, (size_t) enemy_index);
@@ -115,7 +127,19 @@ void update_GameState(GameState * state) {
 
                 // Update total enemies defeated
                 state->player.enemies_defeated++;
-                
+
+                // Update total enemies defeated only in normal mode
+                if (!state->player.boost_enabled) {
+                    state->player.boost_req_defeats++;
+                }
+
+                // Check for player boost condition
+                if (state->player.boost_req_defeats >= 10
+                    && !state->player.boost_enabled) {
+                    state->player.boost_enabled = true;
+                    state->player.remaining_boost_time = PLAYER_BOOST_TIME;
+                }
+
                 // Play sound effects
                 PlaySound(state->enemy_elimination_sound);
 
@@ -135,8 +159,26 @@ void update_GameState(GameState * state) {
         }
     }
 
-    // Fire a new bullet
-    if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+    // Fires a new bullet (boost)
+    if (IsMouseButtonDown(MOUSE_LEFT_BUTTON) 
+        && state->player.boost_enabled)
+    {
+        if (GetTime() - state->last_bullet_timestamp >= 0.4) {
+            Vector2 aiming_direction = Vector2Subtract(
+                GetMousePosition(),
+                state->player.position
+            );
+
+            Bullet new_bullet = {
+                .position = state->player.position,
+                .direction = Vector2Normalize(aiming_direction)
+            };
+
+            push_to_BulletArray(&state->bullets, new_bullet);
+        }
+
+    } else if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+        // Fires a new bullet
         Vector2 aiming_direction = Vector2Subtract(
             GetMousePosition(),
             state->player.position
@@ -149,9 +191,12 @@ void update_GameState(GameState * state) {
 
         push_to_BulletArray(&state->bullets, new_bullet);
 
+        state->last_bullet_timestamp = GetTime();
+
         // play the sound effect
         PlaySound(state->shot_sound);
     }
+
 
 
     // Update position of the enemies and check collision
@@ -159,7 +204,7 @@ void update_GameState(GameState * state) {
 
         float player_distance = Vector2Distance(
             state->player.position,
-            state->enemies.ptr[i].position
+            state->enemies.data[i].position
         );
 
         Vector2 new_direction = {};
@@ -168,31 +213,31 @@ void update_GameState(GameState * state) {
         if (player_distance < ENEMY_AWARENESS_RADIUS) {
             new_direction = Vector2Subtract(
                 state->player.position,
-                state->enemies.ptr[i].position
+                state->enemies.data[i].position
             );
         } else {
-            new_direction = random_Enemy_direction(state->enemies.ptr + i);
+            new_direction = random_Enemy_direction(state->enemies.data + i);
         }
 
-        state->enemies.ptr[i].direction = Vector2Normalize(new_direction);
+        state->enemies.data[i].direction = Vector2Normalize(new_direction);
 
         Vector2 new_position = Vector2Add(
-            state->enemies.ptr[i].position,
-            Vector2Scale(state->enemies.ptr[i].direction, ENEMY_VELOCITY * state->dt)
+            state->enemies.data[i].position,
+            Vector2Scale(state->enemies.data[i].direction, ENEMY_VELOCITY * state->dt)
         );
 
         // Check collision with borders
         if (CheckCollisionPointRec(new_position, window_rect)) {
-            state->enemies.ptr[i].position = new_position;
+            state->enemies.data[i].position = new_position;
         } else {
-            state->enemies.ptr[i].direction =
-                Vector2Scale(state->enemies.ptr[i].direction, -1.0);
+            state->enemies.data[i].direction =
+                Vector2Scale(state->enemies.data[i].direction, -1.0);
         }
         
         // Check collision with Player 
         if (
             CheckCollisionCircleRec(
-                state->enemies.ptr[i].position,
+                state->enemies.data[i].position,
                 ENEMY_RADIUS,
                 state->player.rect
             )
@@ -205,6 +250,7 @@ void update_GameState(GameState * state) {
         }
     }
 
+    // Check if player died
     if (state->player.life <= 0) {
         state->game_over = true;
         return;
@@ -240,8 +286,12 @@ void update_GameState(GameState * state) {
 
     }
 
-    //printf("Bullet array lenght %lu\n", state->bullets.lenght);
-    //printf("Bullet array capacity %lu\n", state->bullets.capacity);
+    /*
+    printf("Bullet array lenght %lu\n", state->bullets.lenght);
+    printf("Bullet array capacity %d\n", BULLET_ARRAY_CAPACITY);
+    printf("Enemy array lenght %lu\n",   state->enemies.lenght);
+    printf("Enemy array capacity %d\n", ENEMY_ARRAY_CAPACITY);
+    */
 }
 
 int main(void) {
@@ -285,7 +335,7 @@ int main(void) {
             // Draw bullets
             for (size_t i = 0; i < state.bullets.lenght; i++) {
                 DrawRectangleV(
-                    state.bullets.ptr[i].position,
+                    state.bullets.data[i].position,
                     (Vector2) { .x=5.0f, .y=5.0f },
                     RED
                 );
@@ -294,7 +344,7 @@ int main(void) {
             // Draw enemies
             for (size_t i = 0; i < state.enemies.lenght; i++) {
                 DrawCircleV(
-                    state.enemies.ptr[i].position,
+                    state.enemies.data[i].position,
                     ENEMY_RADIUS,
                     BLUE
                 );
@@ -311,6 +361,13 @@ int main(void) {
                 DrawTexture(hear_icon, i * hear_icon.width, 0, WHITE);
             }
 
+            // Draw remaining boost time
+            if (state.player.boost_enabled) {
+                const char * boost_time_fmt = "Remaining boost time: %.2fs";
+                sprintf(str_buff, boost_time_fmt, state.player.remaining_boost_time);
+                DrawText(str_buff, 15, WINDOW_HEIGHT - 60, 20, GRAY);
+            }
+
             if (state.game_over) {
                 DrawText("Congrats! You died!", WINDOW_WIDTH / 3, WINDOW_HEIGHT / 2, 30, GRAY);
             }
@@ -320,8 +377,6 @@ int main(void) {
     }
 
     CloseWindow();
-
-    free(state.bullets.ptr);
 
     return 0;
 }

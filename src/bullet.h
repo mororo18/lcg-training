@@ -6,6 +6,8 @@
 #include <stdlib.h>
 #include <err.h>
 
+#define BULLET_ARRAY_CAPACITY 1024
+
 typedef
 struct Bullet {
     Vector2 position;
@@ -14,15 +16,13 @@ struct Bullet {
 
 typedef
 struct BulletArray {
-    Bullet * ptr;
-    size_t capacity;
+    Bullet data[BULLET_ARRAY_CAPACITY];
     size_t lenght;
 } BulletArray;
 
 extern const float BULLET_VELOCITY;
 
 BulletArray new_BulletArray();
-void increase_capacity_of_BulletArray(BulletArray * array, size_t capacity_increase);
 void push_to_BulletArray(BulletArray * array, Bullet bullet);
 void remove_from_BulletArray(BulletArray * array, size_t index);
 
