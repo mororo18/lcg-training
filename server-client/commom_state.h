@@ -8,9 +8,11 @@ struct Fulano {
     char c;
 } Fulano;
 
+#define FULANO_CAPACITY 5
+
 typedef
 struct CommomState {
-    Fulano fulano[10];
+    Fulano fulano[FULANO_CAPACITY];
 } CommomState;
 
 #endif // __COMMOM_STATE_

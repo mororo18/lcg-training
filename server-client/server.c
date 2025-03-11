@@ -9,44 +9,73 @@
 #include <sys/select.h>
 #include "commom_state.h"
 
-#define PORT 1234
-#define MAX_CLIENTS 2
-struct sigaction sigact = {};
-int sockfd = -1;
+typedef
+struct Client {
+    int fd;
+} Client;
 
-int clients_fd[MAX_CLIENTS];
-int clients_count = 0;
+#define GENERIC_TYPES \
+    GTYPE(Client)
+
+#include "generic_array.h"
+
+#define PORT 1234
+#define MAX_CLIENTS 3
+
+typedef
+struct Server {
+    int sockfd;
+    GenericArray clients;
+    fd_set readfds;
+} Server;
+
+Server server = {
+    .sockfd = -1,
+    .clients = {},
+    .readfds = {},
+};
 
 static void signal_handler(int sig){
-    if (sig == SIGINT) {
+    if (sig == SIGINT && server.sockfd != -1) {
         printf("Shutting down...\n");
-        if (sockfd != -1) {
-            close(sockfd);
+        close(server.sockfd);
+
+        for (size_t i = 0; i < server.clients.lenght; i++) {
+            Client client = ClientArray_get(&server.clients, i);
+            close(client.fd);
         }
         exit(0);
     }
 }
 
-void init_signal_handler(void){
+struct sigaction sigact = {};
+
+static void init_signal_handler(void){
     sigact.sa_handler = signal_handler;
     sigemptyset(&sigact.sa_mask);
     sigact.sa_flags = 0;
-    sigaction(SIGINT, &sigact, (struct sigaction *)NULL);
+    sigaction(SIGINT, &sigact, (struct sigaction *) NULL);
 }
 
-int main () {
+static void refuse_connection(Client new_client) {
+    printf("Refusing connection...\n");
+    const char * refuse_msg = "Connection refused.\n";
+    send(new_client.fd, refuse_msg, strlen(refuse_msg), 0);
+    close(new_client.fd);
+}
 
+
+void init_server() {
     init_signal_handler();
-  
     // socket create and verification 
-    sockfd = socket(AF_INET, SOCK_STREAM, 0); 
-    if (sockfd == -1) { 
+    server.sockfd = socket(AF_INET, SOCK_STREAM, 0); 
+    if (server.sockfd == -1) { 
         printf("socket creation failed...\n"); 
         exit(0); 
     } else {
-        printf("Socket (fd=%d) successfully created..\n", sockfd); 
+        printf("Socket (fd=%d) successfully created..\n", server.sockfd); 
     }
-
+    //
     // assign IP, PORT 
     struct sockaddr_in servaddr = {};
     servaddr.sin_family = AF_INET; 
@@ -54,60 +83,69 @@ int main () {
     servaddr.sin_port = htons(PORT);
 
     // Binding newly created socket to given IP and verification 
-    if ((bind(sockfd, (struct sockaddr *)&servaddr, sizeof(servaddr))) != 0) { 
+    if (
+        bind(
+            server.sockfd,
+            (struct sockaddr *)&servaddr,
+            sizeof(servaddr)
+        )
+    ) { 
         printf("socket bind failed...\n"); 
         exit(0); 
     } else {
         printf("Socket successfully binded..\n");
     }
 
-    if (listen(sockfd, 3)) {
+    if (listen(server.sockfd, 3)) {
         printf("Listen failed...\n"); 
         exit(0);
     } else {
         printf("Server listening..\n");
     }
 
-    // Accept the data packet from client and verification 
-    /*
-    struct sockaddr_in  cli = {}; 
-    socklen_t len = sizeof(cli);
-    int connfd = accept(sockfd, (struct sockaddr*)&cli, &len); 
-    printf("connfd = %d\n", connfd);
-    if (connfd < 0) { 
-        printf("server accept failed...\n"); 
-        exit(0); 
-    } else {
-        printf("server accept the client...\n");
+}
+
+void run_server() {
+
+    if (server.sockfd == -1) {
+        return;
     }
-    */
-    fd_set readfds = {};
 
     for (;;) {
-
-        FD_ZERO(&readfds);
-        FD_SET(sockfd, &readfds);
-        int max_sd = sockfd;
+        // Set the fd set to zero
+        FD_ZERO(&server.readfds);
+        // Add sockfd to the set
+        FD_SET(server.sockfd, &server.readfds);
 
         // Add client sockets to read set
-        for (int i = 0; i < MAX_CLIENTS; i++) {
-            int sd = clients_fd[i];
-            if (sd > 0) FD_SET(sd, &readfds);
-            if (sd > max_sd) max_sd = sd;
+        int max_fd = server.sockfd;
+        for (size_t i = 0; i < server.clients.lenght; i++) {
+            Client client = ClientArray_get(&server.clients, i);
+
+            if (client.fd > 0) {
+                FD_SET(client.fd, &server.readfds);
+            }
+
+            if (client.fd > max_fd) {
+                max_fd = client.fd;
+            }
         }
 
         // Wait for an activity
-        int activity = select(max_sd + 1, &readfds, NULL, NULL, NULL);
+        int activity = select(max_fd + 1, &server.readfds, NULL, NULL, NULL);
         if (activity < 0) {
             perror("Select error");
             continue;
         }
 
         // New connection
-        if (FD_ISSET(sockfd, &readfds)) {
+        if (FD_ISSET(server.sockfd, &server.readfds)) {
+
             struct sockaddr_in  address = {}; 
             socklen_t addrlen = sizeof(address);
-            int new_socket = accept(sockfd, (struct sockaddr*)&address, &addrlen);
+
+            int new_socket = accept(server.sockfd, (struct sockaddr*)&address, &addrlen);
+
             if (new_socket < 0) {
                 perror("Accept error");
                 continue;
@@ -115,49 +153,46 @@ int main () {
 
             printf("New connection: socket %d\n", new_socket);
 
-            // Add new socket to client list
-            for (int i = 0; i < MAX_CLIENTS; i++) {
-                if (clients_fd[i] == 0) {
-                    clients_fd[i] = new_socket;
-                    break;
-                }
+            Client new_client = {
+                .fd = new_socket,
+            };
+
+            if (server.clients.lenght == MAX_CLIENTS) {
+                refuse_connection(new_client);
+            } else {
+                char * welcome = "welcome!!!\n";
+                push_to_ClientArray(&server.clients, new_client);
+                write(new_client.fd, welcome, strlen(welcome));
             }
         }
+
 
         char buff[128] = {};
         // Handle client messages
-        for (int i = 0; i < MAX_CLIENTS; i++) {
-            int sd = clients_fd[i];
-            if (FD_ISSET(sd, &readfds)) {
-                int bytes_read = read(sd, buff, sizeof(buff));
-                if (bytes_read == 1) {
-                    printf("Client disconnected: socket %d\n", sd);
-                    fflush(NULL);
-                    close(sd);
-                    clients_fd[i] = 0;
+        for (ssize_t i = 0; i < (ssize_t) server.clients.lenght; i++) {
+
+            Client client = ClientArray_get(&server.clients, (size_t) i);
+            if (FD_ISSET(client.fd, &server.readfds)) {
+                ssize_t bytes_read = read(client.fd, buff, sizeof(buff));
+
+                printf("bytes read = %lu\n", bytes_read);
+                if (bytes_read <= 0) {
+                    printf("Client disconnected: socket %d\n", client.fd);
+                    close(client.fd);
+                    remove_from_ClientArray(&server.clients, (size_t) i);
+                    i--;
                 } else {
                     buff[bytes_read] = '\0';
                     printf("Received: %s\n", buff);
-                    fflush(NULL);
-                    send(sd, buff, bytes_read, 0);  // Echo message back
+                    send(client.fd, buff, (size_t) bytes_read, 0);
                 }
             }
         }
-
-        /*
-        char buff[128] = {};
-        ssize_t bytes_len = read(connfd, buff, sizeof(buff));
-
-        if (bytes_len != -1) {
-            
-            char * text = "perae boy foi leigo agr\n";
-            write(connfd, text, strlen(text));
-
-            printf("error boy, linha %s:%d\n", __FILE__, __LINE__);
-            //exit(-1);
-        }
-        */
     }
+}
 
-    close(sockfd);
+int main () {
+    init_server();
+    run_server();
+    return 0;
 }
