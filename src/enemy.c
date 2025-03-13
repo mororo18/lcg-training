@@ -5,7 +5,6 @@ static const size_t INITIAL_ARRAY_CAPACITY = 10;
 const float ENEMY_AWARENESS_RADIUS = 150.0;
 const float ENEMY_VELOCITY = 70.0;
 const float ENEMY_RADIUS = 10;
-const size_t MAX_ENEMIES = 10;
 
 Vector2 random_Enemy_direction(Enemy * enemy) {
     // To decide wich direction the enemy will follow

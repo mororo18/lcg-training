@@ -1,32 +1,43 @@
-CFLAGS = -std=c2x -Wall -Wextra -Wpedantic -Wconversion -g
+CFLAGS = -O3 -std=c2x -Wall -Wextra -Wpedantic -Wconversion -g
 
 SRC_DIR = src
-SRC = main.c player.c bullet.c enemy.c
-HEADERS = window.h player.h bullet.h enemy.h
-TARGET = game
+GAME_SRC = player.c bullet.c enemy.c client.c
+HEADERS = window.h player.h bullet.h enemy.h client.h
 
-OBJ_WITH_PATH = $(patsubst %.c, $(SRC_DIR)/%.o, $(SRC))
+CLIENT_SRC = main.c $(GAME_SRC)
+CLIENT = game
+
+SERVER_SRC = server.c $(GAME_SRC)
+SERVER = server
+
+CLIENT_OBJ_WITH_PATH = $(patsubst %.c, $(SRC_DIR)/%.o, $(CLIENT_SRC))
+SERVER_OBJ_WITH_PATH = $(patsubst %.c, $(SRC_DIR)/%.o, $(SERVER_SRC))
 
 RAYLIB_DIR = $(CURDIR)/external/raylib/src
 
 ifeq ($(OS),Windows_NT)
 	RAYLIB = raylib.dll
 
-    RUN_CMD = cmd /C "set PATH=$(RAYLIB_DIR);%PATH% && .\$(TARGET).exe"
+    RUN_CMD = cmd /C "set PATH=$(RAYLIB_DIR);%PATH% && .\$(CLIENT).exe"
+    RUN_SERVER_CMD = cmd /C "set PATH=$(RAYLIB_DIR);%PATH% && .\$(SERVER).exe"
 else
 	RAYLIB = libraylib.so
 	#LINKS = -lGL -lm -lpthread -ldl -lrt -lX12
 
-	RUN_CMD = LD_LIBRARY_PATH=$(RAYLIB_DIR) ./$(TARGET)
+	RUN_CMD = LD_LIBRARY_PATH=$(RAYLIB_DIR) ./$(CLIENT)
+	RUN_SERVER_CMD = LD_LIBRARY_PATH=$(RAYLIB_DIR) ./$(SERVER)
 endif
 
 RAYLIB_INC = -I$(RAYLIB_DIR) -L$(RAYLIB_DIR) -lraylib
 
 .PHONY: all clean clean-all
 
-all: $(TARGET)
+all: $(CLIENT) $(SERVER)
 
-$(TARGET): $(OBJ_WITH_PATH) $(RAYLIB_DIR)/$(RAYLIB)
+$(CLIENT): $(CLIENT_OBJ_WITH_PATH) $(RAYLIB_DIR)/$(RAYLIB)
+	$(CC) $(CFLAGS) -o $@ $^ $(RAYLIB_INC)
+
+$(SERVER): $(SERVER_OBJ_WITH_PATH) $(RAYLIB_DIR)/$(RAYLIB)
 	$(CC) $(CFLAGS) -o $@ $^ $(RAYLIB_INC)
 
 $(SRC_DIR)/%.o: $(SRC_DIR)/%.c $(wildcard $(SRC_DIR)/%.h)
@@ -39,11 +50,14 @@ debug: clean
 debug: CFLAGS += -DDEBUG
 debug: run
 
-run: clean $(TARGET)
+run: clean $(CLIENT)
 	$(RUN_CMD)
 
+server-run: clean $(SERVER)
+	$(RUN_SERVER_CMD)
+
 clean:
-	$(RM) $(TARGET) $(OBJ_WITH_PATH) $(RAYLIB_DIR)/$(RAYLIB)
+	$(RM) $(CLIENT) $(CLIENT_OBJ_WITH_PATH) $(SERVER) $(SERVER_OBJ_WITH_PATH) $(RAYLIB_DIR)/$(RAYLIB)
 
 clean-all: clean
 	$(MAKE) -C $(RAYLIB_DIR) clean

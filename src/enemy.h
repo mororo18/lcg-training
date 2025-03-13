@@ -23,7 +23,6 @@ struct EnemyArray {
 extern const float ENEMY_VELOCITY;
 extern const float ENEMY_RADIUS;
 extern const float ENEMY_AWARENESS_RADIUS;
-extern const size_t MAX_ENEMIES;
 
 Vector2 random_Enemy_direction(Enemy * enemy);
 EnemyArray new_EnemyArray();

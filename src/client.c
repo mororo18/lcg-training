@@ -1,3 +1,12 @@
+#define _XOPEN_SOURCE 700
+#include <sys/socket.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <unistd.h>
+#include <signal.h>
+
 #include <assert.h>
 #include <err.h>
 #include <time.h>
@@ -9,14 +18,105 @@
 #include <raylib.h>
 #include <raymath.h>
 
+#include "client.h"
+#include "server.h"
 #include "window.h"
 #include "bullet.h"
 #include "player.h"
 #include "enemy.h"
-#include "client.h"
+
+#define PORT 1234
+
+Client g_client = {
+    .mode = CM_MULTIPLAYER,
+    .fd = -1,
+};
+
+static void signal_handler(int sig){
+    if (sig == SIGINT) {
+        printf("Shutting down...\n");
+        close(g_client.fd);
+        exit(0);
+    }
+}
+
+static struct sigaction sigact = {};
+
+void init_signal_handler(void){
+    sigact.sa_handler = signal_handler;
+    sigemptyset(&sigact.sa_mask);
+    sigact.sa_flags = 0;
+    sigaction(SIGINT, &sigact, (struct sigaction*) NULL);
+}
+
+void setup_multiplayer_client() {
+    int connfd, len; 
+    struct sockaddr_in servaddr = {};
+    struct sockaddr_in  cli = {}; 
+  
+    init_signal_handler();
+
+    // socket create and verification 
+    g_client.fd = socket(AF_INET, SOCK_STREAM, 0); 
+    if (g_client.fd == -1) { 
+        printf("socket creation failed...\n"); 
+        exit(0); 
+    } else {
+        printf("Socket successfully created..\n"); 
+    }
+
+    // assign IP, PORT
+    servaddr.sin_family = AF_INET;
+    servaddr.sin_addr.s_addr = inet_addr("0.0.0.0");
+    servaddr.sin_port = htons(PORT);
+
+     // connect the client socket to server socket
+    if (connect(g_client.fd, (struct sockaddr*)&servaddr, sizeof(servaddr))
+        != 0) {
+        printf("connection with the server failed...\n");
+        exit(0);
+    } else {
+        printf("connected to the server..\n");
+    }
+}
+
+uint32_t recieve_player_id_from_server() {
+    uint32_t player_id;
+
+    for (;;) {
+        if (is_ready_for_reading(g_client.fd)) {
+            Event event = recieve_event(g_client.fd);
+
+            assert(event.type == PLAYER_ACCEPTED_EVENT);
+            player_id = (uint32_t) event.data.player_accepted.id;
+            printf("client id = %u\n", player_id);
+            break;
+        }
+    }
+
+    return player_id;
+}
 
 /*
-const Rectangle window_rect = {
+int main () {
+
+
+    for (;;) {
+        char buff[128] = {};
+        if (is_ready_for_reading(g_client.fd)) {
+            ssize_t bytes_read = read(g_client.fd, buff, sizeof(buff));
+            if (bytes_read > 0) {
+                buff[bytes_read] = '\0';
+                printf("read = %s\n", buff);
+            }
+        }
+    }
+
+    return 0;
+}
+*/
+
+static const Rectangle window_rect = {
     .x = 0.,
     .y = 0.,
     .width = WINDOW_WIDTH,
@@ -25,7 +125,8 @@ const Rectangle window_rect = {
 
 typedef
 struct GameState {
-    Player player;
+    int my_player_id;
+    PlayerArray players;
     BulletArray bullets;
     double last_bullet_timestamp;
     EnemyArray enemies;
@@ -37,9 +138,11 @@ struct GameState {
     Sound player_damage_sound;
 } GameState;
 
-GameState default_GameState() {
+static GameState default_GameState() {
     GameState state = {0};
-    state.player = default_Player();
+    // TODO: Isso precisa depender do modo do client (MULTIPLAYER OU SINGLE)
+    //state.players = default_Player();
+    state.my_player_id = -1;
     state.bullets = new_BulletArray();
     state.enemies = new_EnemyArray();
     state.bg_music = LoadMusicStream("assets/music/red-doors-2.mp3");
@@ -50,7 +153,7 @@ GameState default_GameState() {
     return state;
 }
 
-void update_GameState(GameState * state) {
+static void update_client_state(GameState * state) {
 
     const Vector2 up    = { .x =  0.0, .y = -1.0 };
     const Vector2 down  = { .x =  0.0, .y =  1.0 };
@@ -92,14 +195,12 @@ void update_GameState(GameState * state) {
         PLAYER_VELOCITY * state->dt
     );
 
-    state->player.position = Vector2Add(
-        state->player.position,
+    g_client.my_player.info.position = Vector2Add(
+        g_client.my_player.info.position,
         player_movement_direction
     );
 
-    state->player.rect.x = state->player.position.x;
-    state->player.rect.y = state->player.position.y;
-
+    /*
     if (state->player.boost_enabled) {
         state->player.remaining_boost_time -= state->dt;
 
@@ -287,31 +388,130 @@ void update_GameState(GameState * state) {
         }
 
     }
-
-    // printf("Bullet array lenght %lu\n", state->bullets.lenght);
-    // printf("Bullet array capacity %d\n", BULLET_ARRAY_CAPACITY);
-    // printf("Enemy array lenght %lu\n",   state->enemies.lenght);
-    // printf("Enemy array capacity %d\n", ENEMY_ARRAY_CAPACITY);
-}
-
-*/
-
-int main(void) {
-
-    init_Client();
-
+    */
 
     /*
+    printf("Bullet array lenght %lu\n", state->bullets.lenght);
+    printf("Bullet array capacity %d\n", BULLET_ARRAY_CAPACITY);
+    printf("Enemy array lenght %lu\n",   state->enemies.lenght);
+    printf("Enemy array capacity %d\n", ENEMY_ARRAY_CAPACITY);
+    */
+}
+
+void draw_frame(GameState * state) {
+    BeginDrawing();
+    {
+        ClearBackground(RAYWHITE);
+
+        // Draw players
+        for (size_t i = 0; i < state->players.lenght; i++) {
+            Player * player;
+            if (state->players.data[i].id == g_client.my_player.id) {
+                // We do this bc the player on the array that has the
+                // same id is not updated.
+                player = &g_client.my_player;
+            } else {
+                player = state->players.data + i;
+            }
+
+            DrawRectangle(
+                (int) player->info.position.x,
+                (int) player->info.position.y,
+                (int) player_rect.width,
+                (int) player_rect.height,
+                RED
+            );
+        }
+
+        // Draw bullets
+        for (size_t i = 0; i < state->bullets.lenght; i++) {
+            DrawRectangleV(
+                state->bullets.data[i].position,
+                (Vector2) { .x=5.0f, .y=5.0f },
+                RED
+            );
+        }
+
+        // Draw enemies
+        for (size_t i = 0; i < state->enemies.lenght; i++) {
+            DrawCircleV(
+                state->enemies.data[i].position,
+                ENEMY_RADIUS,
+                BLUE
+            );
+        }
+
+        /*
+        // Draw total enemies defeated
+        const char * score_fmt = "Enemies defeated: %u";
+        char str_buff[64] = {};
+        sprintf(str_buff, score_fmt, state->player.enemies_defeated);
+        DrawText(str_buff, 15, 60, 20, GRAY);
+
+        // Draw remainig life
+        for (int i = 0; i < state->player.life; i++) {
+            //DrawTexture(hear_icon, i * hear_icon.width, 0, WHITE);
+        }
+
+        // Draw remaining boost time
+        if (state->player.boost_enabled) {
+            const char * boost_time_fmt = "Remaining boost time: %.2fs";
+            sprintf(str_buff, boost_time_fmt, state->player.remaining_boost_time);
+            DrawText(str_buff, 15, WINDOW_HEIGHT - 60, 20, GRAY);
+        }
+        */
+
+        if (state->game_over) {
+            DrawText("Congrats! You died!", WINDOW_WIDTH / 3, WINDOW_HEIGHT / 2, 30, GRAY);
+        }
+    }
+    EndDrawing();
+}
+
+void send_player_position_to_server(Player * player) {
+    RequestPlayerInfoUpdate pos_update = {
+        .info = player->info,
+    };
+
+    Request request = {
+        .type = REQUEST_PLAYER_INFO_UPDATE,
+        .data = { pos_update },
+    };
+
+    send_request(request, g_client.fd);
+}
+
+void init_Client() {
     srand((unsigned int) clock());
 
-    InitWindow((int) window_rect.width, (int) window_rect.height, "little candle games - training");
     InitAudioDevice();
+    GameState state = default_GameState();
 
+    if (g_client.mode == CM_MULTIPLAYER) {
+        setup_multiplayer_client(); 
+        uint32_t player_id = recieve_player_id_from_server();
+        state.my_player_id = (int) player_id;
+
+        g_client.my_player = default_Player();
+        g_client.my_player.id = (int) player_id;
+
+        push_to_PlayerArray(&state.players, g_client.my_player);
+    } else {
+        printf("only multiplayer for now.");
+        exit(0);
+    }
+
+    InitWindow(
+        (int) window_rect.width,
+        (int) window_rect.height,
+        "little candle games - training"
+    );
     SetTargetFPS(60);
 
-    GameState state = default_GameState();
     const Texture2D hear_icon = LoadTexture("assets/heart.png");
     PlayMusicStream(state.bg_music);
+
+    int64_t start = millis();
 
     while (!WindowShouldClose()) {
         UpdateMusicStream(state.bg_music);
@@ -319,71 +519,75 @@ int main(void) {
         state.dt = GetFrameTime();
 
         if (!state.game_over) {
-            update_GameState(&state);
+            update_client_state(&state);
         } else {
             PauseMusicStream(state.bg_music);
         }
 
+        draw_frame(&state);
 
-        BeginDrawing();
-        {
-            ClearBackground(RAYWHITE);
-
-            // Draw player
-            DrawRectangle(
-                (int) state.player.position.x,
-                (int) state.player.position.y,
-                (int) state.player.rect.width,
-                (int) state.player.rect.height,
-                RED
-            );
-
-            // Draw bullets
-            for (size_t i = 0; i < state.bullets.lenght; i++) {
-                DrawRectangleV(
-                    state.bullets.data[i].position,
-                    (Vector2) { .x=5.0f, .y=5.0f },
-                    RED
-                );
-            }
-
-            // Draw enemies
-            for (size_t i = 0; i < state.enemies.lenght; i++) {
-                DrawCircleV(
-                    state.enemies.data[i].position,
-                    ENEMY_RADIUS,
-                    BLUE
-                );
-            }
-
-            // Draw total enemies defeated
-            const char * score_fmt = "Enemies defeated: %u";
-            char str_buff[64] = {};
-            sprintf(str_buff, score_fmt, state.player.enemies_defeated);
-            DrawText(str_buff, 15, 60, 20, GRAY);
-
-            // Draw remainig life
-            for (int i = 0; i < state.player.life; i++) {
-                DrawTexture(hear_icon, i * hear_icon.width, 0, WHITE);
-            }
-
-            // Draw remaining boost time
-            if (state.player.boost_enabled) {
-                const char * boost_time_fmt = "Remaining boost time: %.2fs";
-                sprintf(str_buff, boost_time_fmt, state.player.remaining_boost_time);
-                DrawText(str_buff, 15, WINDOW_HEIGHT - 60, 20, GRAY);
-            }
-
-            if (state.game_over) {
-                DrawText("Congrats! You died!", WINDOW_WIDTH / 3, WINDOW_HEIGHT / 2, 30, GRAY);
-            }
+        int64_t elapsed = millis() - start;
+        double elapsed_sec = (double) elapsed / 1000.0;
+        // Send Player position
+        if (elapsed_sec > (1.0/30.0) && is_ready_for_writing(g_client.fd)) {
+            start = millis();
+            send_player_position_to_server(&g_client.my_player);
         }
-        EndDrawing();
+
+        // Update other Players positions
+        if (is_ready_for_reading(g_client.fd)) {
+            Event event = recieve_event(g_client.fd);
+
+            switch (event.type) {
+                case PLAYER_INFO_UPDATE_EVENT:
+                    {
+                        int player_id = event.data.player_info_update.id;
+                        PlayerInfo player_new_info = event.data.player_info_update.info;
+                        bool player_found = false;
+
+                        printf("recebendo info update (id=%d)\n", player_id);
+                        for (size_t i = 0; i < state.players.lenght; i++) {
+                            if (player_id == state.players.data[i].id) {
+                                state.players.data[i].info = player_new_info;
+                                player_found = true;
+                                break;
+                            }
+                        }
+
+                        if (!player_found) {
+                            Player new_player = default_Player();
+                            new_player.id = player_id;
+                            new_player.info = player_new_info;
+                            push_to_PlayerArray(&state.players, new_player);
+                        }
+
+                    } break;
+                case ENEMIES_POSITION_UPDATE_EVENT:
+                    {
+                        state.enemies.lenght = 0;
+
+                        for (size_t i = 0; i < MAX_ENEMIES; i++) {
+                            Vector2 position = event.data.enemies_position_update.position[i];
+                            Enemy enemy = {
+                                .position = position,
+                            };
+                            push_to_EnemyArray(&state.enemies, enemy);
+                        }
+                    }
+                    break;
+                case EMPTY_EVENT:
+                    break;
+                case PLAYER_ACCEPTED_EVENT:
+                    break;
+            };
+
+        }
 
     }
 
     CloseWindow();
-    */
 
-    return 0;
+    if (g_client.mode == CM_MULTIPLAYER) {
+        close(g_client.fd);
+    }
 }
