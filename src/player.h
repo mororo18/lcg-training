@@ -8,24 +8,31 @@
 typedef
 struct PlayerInfo {
     Vector2 position;
+    int enemies_defeated;
+    int life;
 } PlayerInfo;
+
+typedef int PlayerId;
 
 typedef
 struct Player {
     PlayerInfo info;
-    int life;
-    int enemies_defeated;
     int boost_req_defeats;
     float remaining_boost_time;
     bool boost_enabled;
-    int id;
+    PlayerId id;
 } Player;
 
 Player default_Player();
+PlayerInfo default_PlayerInfo();
 
-extern const float PLAYER_VELOCITY;
-extern const float PLAYER_BOOST_TIME;
-extern const Rectangle player_rect;
+static const int PLAYER_LIFE = 5;
+static const float PLAYER_VELOCITY = 100.0;
+static const float PLAYER_BOOST_TIME = 5.0; // seconds
+static const Rectangle PLAYER_RECT = {
+    .width = 25.0,
+    .height = 25.0,
+};
 
 
 #define PLAYER_ARRAY_CAPACITY 16

@@ -3,24 +3,19 @@
 #include <stdlib.h>
 #include <err.h>
 
-const float PLAYER_VELOCITY = 100.0;
-const float PLAYER_BOOST_TIME = 5.0; // seconds
-const Rectangle player_rect = {
-    .x = WINDOW_WIDTH / 2.0f,
-    .y = WINDOW_HEIGHT / 2.0f,
-    .width = 25.0,
-    .height = 25.0,
-};
 
+PlayerInfo default_PlayerInfo() {
+    return (PlayerInfo) {
+        .life = PLAYER_LIFE,
+        .position = (Vector2) {
+            .x = WINDOW_WIDTH / 2.0f,
+            .y = WINDOW_HEIGHT / 2.0f,
+        },
+    };
+}
 Player default_Player() {
     Player player = {
-        .info = (PlayerInfo) {
-            .position = (Vector2) {
-                .x = WINDOW_WIDTH / 2.0f,
-                .y = WINDOW_HEIGHT / 2.0f,
-            },
-        },
-        .life = 5,
+        .info = default_PlayerInfo(),
         .remaining_boost_time = 1.0,
         .boost_enabled = false,
         .id = -1,

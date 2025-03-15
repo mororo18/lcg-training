@@ -2,6 +2,8 @@
 #define __CLIENT_H_
 
 #include "player.h"
+#include "bullet.h"
+#include "bullet_array.h"
 #include <assert.h>
 #include <stdio.h>
 #include <unistd.h>
@@ -10,8 +12,15 @@
 typedef
 enum RequestType {
     REQUEST_PLAYER_INFO_UPDATE,
+    REQUEST_BULLET_INFO_UPDATE,
+    REQUEST_BULLET_SHOT,
     REQUEST_EMPTY,
 } RequestType;
+
+typedef
+struct RequestBulletsInfoUpdate {
+    BulletInfoArray info;
+} RequestBulletsInfoUpdate;
 
 typedef
 struct RequestPlayerInfoUpdate {
@@ -20,6 +29,7 @@ struct RequestPlayerInfoUpdate {
 
 typedef
 union RequestData {
+    RequestBulletsInfoUpdate bullets_info_update;
     RequestPlayerInfoUpdate player_info_update;
 } RequestData;
 
@@ -45,19 +55,19 @@ inline static _Bool is_ready_for_reading(int fd) {
     return is_ready(fd, POLLIN);
 }
 
-inline
+inline static
 void send_request(Request request, int fd) {
     ssize_t ret = write(fd, &request, sizeof(request));
     assert(ret != -1);
     assert(ret == sizeof(request));
 }
 
-inline
+inline static
 Request recieve_request(int fd) {
     Request request = {};
     ssize_t ret = read(fd, &request, sizeof(request));
 
-    printf("recieved %ld bytes\n", ret);
+    //printf("recieved %ld bytes\n", ret);
 
     if (ret < (ssize_t) sizeof(request)) {
         request.type = REQUEST_EMPTY;
@@ -73,12 +83,27 @@ enum ClientMode {
 } ClientMode;
 
 typedef
+struct ClientInfo {
+    int fd;
+    int player_id;
+    PlayerInfo player_info;
+} ClientInfo;
+
+typedef int ClientId;
+
+
+typedef
 struct Client {
     ClientMode mode;
-    int fd;
-    Player my_player;
+    ClientInfo info;
+    BulletArray my_bullets;
+    bool was_bullet_fired;
+    uint32_t bullet_counter;
 } Client;
 
+
+static const uint32_t CLIENT_UPDATE_RATE = 15;
+static const float CLIENT_UPDATE_INTERVAL = 1.0f / (float) CLIENT_UPDATE_RATE;
 extern Client g_client;
 
 void init_Client();

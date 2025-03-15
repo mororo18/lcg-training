@@ -1,7 +1,6 @@
 #include "enemy.h"
-#include <string.h>
+#include <stdlib.h>
 
-static const size_t INITIAL_ARRAY_CAPACITY = 10;
 const float ENEMY_AWARENESS_RADIUS = 150.0;
 const float ENEMY_VELOCITY = 70.0;
 const float ENEMY_RADIUS = 10;
@@ -29,6 +28,7 @@ Vector2 random_Enemy_direction(Enemy * enemy) {
     return enemy->direction;
 }
 
+/*
 EnemyArray new_EnemyArray() {
     EnemyArray array = {
         .data = {},
@@ -55,3 +55,4 @@ void remove_from_EnemyArray(EnemyArray * array, size_t index) {
     array->data[index] = array->data[array->lenght-1];
     array->lenght--;
 }
+*/

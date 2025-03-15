@@ -1,4 +1,4 @@
-CFLAGS = -O3 -std=c2x -Wall -Wextra -Wpedantic -Wconversion -g
+CFLAGS = -std=c2x -Wall -Wextra -Wpedantic -Wconversion -g -rdynamic
 
 SRC_DIR = src
 GAME_SRC = player.c bullet.c enemy.c client.c
