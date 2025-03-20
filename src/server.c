@@ -17,6 +17,7 @@
 #include "player.h"
 #include "bullet.h"
 #include "enemy.h"
+#include "packet.h"
 #include "server.h"
 #include "client.h"
 #include "player_array.h"
@@ -24,7 +25,7 @@
 #include "client_array.h"
 
 #define PORT 1234
-#define MAX_CLIENTS 3
+#define MAX_CLIENTS 5
 
 typedef
 struct Server {
@@ -50,8 +51,8 @@ static void server_signal_handler(int sig){
         close(server.sockfd);
 
         for (size_t i = 0; i < server.client_info_array.lenght; i++) {
-            ClientInfo client = ClientInfoArray_get(&server.client_info_array, i);
-            close(client.fd);
+            ClientInfo * client = ClientInfoArray_at(&server.client_info_array, i);
+            close(client->fd);
         }
         exit(0);
     }
@@ -68,7 +69,7 @@ static void init_signal_handler(void){
 
 static void refuse_connection(ClientInfo * new_client) {
     printf("Refusing connection...\n");
-    send_event((Event) {.type=EVENT_PLAYER_REFUSED}, new_client->fd);
+    send_packet(&(Packet) {.type=EVENT_PLAYER_REFUSED}, new_client->fd);
     close(new_client->fd);
 }
 
@@ -110,6 +111,8 @@ void init_server() {
         printf("Server listening..\n");
     }
 
+    init_packet_queues();
+
 }
 
 inline clock_t check_clock_failure(clock_t clk) {
@@ -126,76 +129,86 @@ void send_player_info_to_client(PlayerInfo * player_info, ClientInfo * src, Clie
         .info = *player_info,
     };
 
-    Event event = {
+    Packet packet = {
         .type = EVENT_PLAYER_INFO_UPDATE,
         .data = {
-            .player_info_update = player_info_update
+            .player_info_update_event = player_info_update
         },
     };
 
-    send_event(event, dest->fd);
+    send_packet(&packet, dest->fd);
 }
 
 void send_enemies_position_to_client(EnemyArray * enemy_array, ClientInfo * dest) {
-    EnemiesPositionUpdateEvent enemies_position_event = {};
+    EnemiesPositionUpdateEvent enemies_position_packet = {};
 
     size_t position_array_size =
-        sizeof(enemies_position_event.position) / sizeof(enemies_position_event.position[0]);
+        sizeof(enemies_position_packet.position) / sizeof(enemies_position_packet.position[0]);
     assert(position_array_size == enemy_array->lenght);
     for (size_t i = 0; i < enemy_array->lenght; i++) {
-        enemies_position_event.position[i] = EnemyArray_get(enemy_array, i).position;
+        enemies_position_packet.position[i] = EnemyArray_get(enemy_array, i).position;
     }
 
-    Event event = {
+    Packet packet = {
         .type = EVENT_ENEMIES_POSITION_UPDATE,
         .data = {
-            .enemies_position_update = enemies_position_event
+            .enemies_position_update = enemies_position_packet
         },
     };
 
-    send_event(event, dest->fd);
+    send_packet(&packet, dest->fd);
 }
 
 void send_bullets_position_to_client(BulletInfoArray * bullets_info, ClientInfo * dest) {
-    BulletsInfoUpdateEvent bullets_info_event = {};
-    bullets_info_event.info.lenght = bullets_info->lenght;
+    BulletsInfoUpdateEvent bullets_info_packet = {};
+    bullets_info_packet.info.lenght = bullets_info->lenght;
 
     for (size_t i = 0; i < bullets_info->lenght; i++) {
         BulletInfo * server_bullet = BulletInfoArray_at(bullets_info, i);
-        BulletInfo * event_bullet = BulletInfoArray_at(&bullets_info_event.info, i);
-        *event_bullet = *server_bullet;
+        BulletInfo * packet_bullet = BulletInfoArray_at(&bullets_info_packet.info, i);
+        *packet_bullet = *server_bullet;
     }
 
-    Event event = {
+    Packet packet = {
         .type = EVENT_BULLETS_INFO_UPDATE,
         .data = {
-            .bullets_info_update = bullets_info_event
+            .bullets_info_update_event = bullets_info_packet
         },
     };
 
-    send_event(event, dest->fd);
+    send_packet(&packet, dest->fd);
 }
 
 void send_last_shots_to_client(PlayerIdArray * who_last_shot, ClientInfo * dest) {
-    Event event = {
+    Packet packet = {
         .type = EVENT_PLAYERS_WHO_SHOT,
         .data = {
             .players_who_shot = { *who_last_shot }
         },
     };
 
-    send_event(event, dest->fd);
+    send_packet(&packet, dest->fd);
 }
 
 void send_bullets_destroyed_last_to_client(BulletInfoArray * bullets_last_destroyed, ClientInfo * dest) {
-    Event event = {
+    //printf("sending %lu last destroyed bullets\n", bullets_last_destroyed->lenght);
+    DestroyedBulletsEvent destroyed_bullets = {};
+
+    destroyed_bullets.bullets.lenght = bullets_last_destroyed->lenght;
+    for (size_t i = 0; i < bullets_last_destroyed->lenght; i++) {
+        BulletInfo * server_bullet = BulletInfoArray_at(bullets_last_destroyed, i);
+        BulletInfo * packet_bullet = BulletInfoArray_at(&destroyed_bullets.bullets, i);
+        *packet_bullet = *server_bullet;
+    }
+
+    Packet packet = {
         .type = EVENT_DESTROYED_BULLETS,
         .data = {
-            .destroyed_bullets = { *bullets_last_destroyed }
+            .destroyed_bullets = destroyed_bullets
         },
     };
 
-    send_event(event, dest->fd);
+    send_packet(&packet, dest->fd);
 }
 
 void update_game_state(float elapsed_secs) {
@@ -257,6 +270,21 @@ void update_game_state(float elapsed_secs) {
     }
     */
 
+    // Update score of the player
+    for (size_t client_i = 0; client_i < server.client_info_array.lenght; client_i++) {
+        ClientInfo * client = ClientInfoArray_at(&server.client_info_array, client_i);
+
+        if (client->player_info.boost_enabled) {
+            client->player_info.remaining_boost_time -= elapsed_secs;
+
+            if (client->player_info.remaining_boost_time <= 0.0) {
+                client->player_info.remaining_boost_time = 0.0;
+                client->player_info.boost_req_defeats = 0;
+                client->player_info.boost_enabled = false;
+            }
+        }
+    }
+
     server.was_some_enemy_killed = false;
     
     // Update position of the enemies and check collision
@@ -278,6 +306,19 @@ void update_game_state(float elapsed_secs) {
                     ClientInfo * client = ClientInfoArray_at(&server.client_info_array, client_i);
                     if (client->fd == bullet.player_id) {
                         client->player_info.enemies_defeated++;
+                        
+                        // Update total enemies defeated only in normal mode
+                        if (!client->player_info.boost_enabled) {
+                            client->player_info.boost_req_defeats++;
+                        }
+
+                        // Check for player boost condition
+                        if (client->player_info.boost_req_defeats >= PLAYER_BOOST_REQUIRED_DEFEATS
+                                && !client->player_info.boost_enabled) {
+                            client->player_info.boost_enabled = true;
+                            client->player_info.remaining_boost_time = PLAYER_BOOST_TIME;
+                        }
+
                         break;
                     }
                 }
@@ -325,17 +366,17 @@ void update_game_state(float elapsed_secs) {
         };
 
         for (size_t client_j = 0; client_j < server.client_info_array.lenght; client_j++) {
-            ClientInfo client = ClientInfoArray_get(&server.client_info_array, client_j);
+            ClientInfo * client = ClientInfoArray_at(&server.client_info_array, client_j);
 
             float player_distance = Vector2Distance(
-                client.player_info.position,
+                client->player_info.position,
                 enemy_i->position
             );
-            bool player_alive = client.player_info.life > 0;
+            bool player_alive = client->player_info.life > 0;
             if (player_distance < nearest_player.distance && player_alive) {
                 nearest_player.distance = player_distance;
-                nearest_player.id = client.fd;
-                nearest_player.position = client.player_info.position;
+                nearest_player.id = client->fd;
+                nearest_player.position = client->player_info.position;
             }
         }
         //assert(nearest_player.id != -1 || server.client_info_array.lenght == 0);
@@ -417,6 +458,7 @@ void update_game_state(float elapsed_secs) {
 
 void update_bullets_from_player(BulletInfoArray * updated_bullets, int player_id) {
 
+    // Remove all old bullets
     for (size_t i = 0; i < server.bullets_info.lenght; i++) {
         BulletInfo server_bullet = BulletInfoArray_get(&server.bullets_info, i);
 
@@ -427,6 +469,7 @@ void update_bullets_from_player(BulletInfoArray * updated_bullets, int player_id
 
     }
 
+    // Add the new ones
     for (size_t i = 0; i < updated_bullets->lenght; i++) {
         BulletInfo player_bullet = BulletInfoArray_get(updated_bullets, i);
         push_to_BulletInfoArray(&server.bullets_info, player_bullet);
@@ -451,14 +494,14 @@ void run_server() {
         // Add client sockets to set
         int max_fd = server.sockfd;
         for (size_t i = 0; i < server.client_info_array.lenght; i++) {
-            ClientInfo client = ClientInfoArray_get(&server.client_info_array, i);
+            ClientInfo * client = ClientInfoArray_at(&server.client_info_array, i);
 
-            if (client.fd > 0) {
-                FD_SET(client.fd, &server.readfds);
+            if (client->fd > 0) {
+                FD_SET(client->fd, &server.readfds);
             }
 
-            if (client.fd > max_fd) {
-                max_fd = client.fd;
+            if (client->fd > max_fd) {
+                max_fd = client->fd;
             }
         }
 
@@ -492,49 +535,60 @@ void run_server() {
             if (server.client_info_array.lenght + 1 > MAX_CLIENTS) {
                 refuse_connection(&new_client);
             } else {
+                assign_packet_queue_to_client(new_client.fd);
                 push_to_ClientInfoArray(&server.client_info_array, new_client);
                 // Sends the new_client.fd to the client.
                 // The fd is used as the id of a player.
                 PlayerAcceptedEvent player_accepted = {
                     .id = new_client.fd,
+                    .info = new_client.player_info,
                 };
 
-                Event event = {
+                Packet packet = {
                     .type = EVENT_PLAYER_ACCEPTED,
                     .data =  {
                         .player_accepted = player_accepted
                     },
                 };
 
-                send_event(event, new_client.fd);
+                send_packet(&packet, new_client.fd);
             }
         }
 
 
-        size_t total_bytes_read = 0;
-        // Handle client requests
+        // Handle client packets
+        //size_t total_recieved_bytes = 0;
         for (ssize_t i = 0; i < (ssize_t) server.client_info_array.lenght; i++) {
             ClientInfo * client = ClientInfoArray_at(&server.client_info_array, (size_t) i);
-            if (FD_ISSET(client->fd, &server.readfds)) {
-                total_bytes_read += sizeof(Request);
-                Request client_request = recieve_request(client->fd);
+            PacketQueue * client_queue = get_packet_queue(client->fd);
+            bool is_fd_ready = FD_ISSET(client->fd, &server.readfds);
+            if (pending_packets(client->fd, client_queue, is_fd_ready)) {
+                Packet client_packet = {};
+                recieve_packet(&client_packet, client_queue);
 
-                switch (client_request.type) {
+                assert(is_request(client_packet.type));
+                //log_packet_type("Server recieved: ", client_packet.type);
+                switch (client_packet.type) {
                     case REQUEST_PLAYER_INFO_UPDATE:
                         {
                             PlayerInfo player_new_info =
-                                client_request.data.player_info_update.info;
-                            int player_current_life = client->player_info.life;
-                            int player_current_score = client->player_info.enemies_defeated;
+                                client_packet.data.req_player_info_update.info;
+                            //int player_current_life = client->player_info.life;
+                            //int player_current_score = client->player_info.enemies_defeated;
 
-                            client->player_info = player_new_info;
-                            client->player_info.life = player_current_life;
-                            client->player_info.enemies_defeated = player_current_score;
+                            client->player_info.position = player_new_info.position;
+                            //client->player_info.life = player_current_life;
+                            //client->player_info.enemies_defeated = player_current_score;
+                            /*
+                            printf("Player pos = (%.2f, %.2f)\n",
+                                    player_new_info.position.x,
+                                    player_new_info.position.y);
+                                    */
                         } break;
                     case REQUEST_BULLET_INFO_UPDATE:
                         {
                             BulletInfoArray * updated_bullets =
-                                &client_request.data.bullets_info_update.info;
+                                &client_packet.data.req_bullets_info_update.info;
                             update_bullets_from_player(updated_bullets, client->fd);
                         } break;
                     case REQUEST_BULLET_SHOT:
@@ -545,6 +599,7 @@ void run_server() {
                         {
                             printf("Client disconnected: socket %d\n", client->fd);
                             close(client->fd);
+                            reset_packet_queue(client->fd);
                             remove_from_ClientInfoArray(&server.client_info_array, (size_t) i);
                             i--;
                         } break;
@@ -553,10 +608,6 @@ void run_server() {
         }
 
 
-        if (total_bytes_read > 0) {
-            //printf("total bytes read = %lu\n", total_bytes_read);
-        }
-        
         int64_t elapsed = millis() - start;
         float elapsed_secs = (float) ((double) elapsed / 1000.0);
         //printf("elapsed secs =%.5fs\n", elapsed_secs);
@@ -566,39 +617,50 @@ void run_server() {
             start = millis();
 
             for (ssize_t i = 0; i < (ssize_t) server.client_info_array.lenght; i++) {
-                ClientInfo dest = ClientInfoArray_get(&server.client_info_array, (size_t) i);
+                ClientInfo * dest = ClientInfoArray_at(&server.client_info_array, (size_t) i);
 
-                if (!is_ready_for_writing(dest.fd)) {
+                if (!is_ready_for_writing(dest->fd)) {
                     continue;
                 }
 
                 // Send player's info to client_info_array
                 for (ssize_t index = 0; index < (ssize_t) server.client_info_array.lenght; index++) {
                     //printf("(i, j) = (%ld, %ld)\n", i, j);
-                    ClientInfo src = ClientInfoArray_get(&server.client_info_array, (size_t) index);
-                    send_player_info_to_client(&src.player_info, &src, &dest);
+                    ClientInfo * src = ClientInfoArray_at(&server.client_info_array, (size_t) index);
+                    send_player_info_to_client(&src->player_info, src, dest);
                 }
                 
                 // Send enemies' info to clients
-                send_enemies_position_to_client(&server.enemies, &dest);
+                send_enemies_position_to_client(&server.enemies, dest);
 
                 // Send the position of the bullets to clients
-                send_bullets_position_to_client(&server.bullets_info, &dest);
+                send_bullets_position_to_client(&server.bullets_info, dest);
 
                 // Tell if some enemy was killed
                 if (server.was_some_enemy_killed) {
-                    Event event = {
+                    Packet packet = {
                         .type = EVENT_ENEMY_KILLED,
                     };
-                    send_event(event, dest.fd);
+                    send_packet(&packet, dest->fd);
                 }
 
                 if (server.who_last_shot.lenght > 0) {
-                    send_last_shots_to_client(&server.who_last_shot, &dest);
+                    send_last_shots_to_client(&server.who_last_shot, dest);
                 }
 
                 if (server.bullets_destroyed_last.lenght > 0) {
-                    send_bullets_destroyed_last_to_client(&server.bullets_destroyed_last, &dest);
+                    send_bullets_destroyed_last_to_client(&server.bullets_destroyed_last, dest);
+                }
+
+                {
+                    Packet packet_boost = {};
+
+                    if (dest->player_info.boost_enabled) {
+                        packet_boost.type = EVENT_PLAYER_ENABLE_BOOST;
+                    } else {
+                        packet_boost.type = EVENT_PLAYER_DISABLE_BOOST;
+                    }
+                    send_packet(&packet_boost, dest->fd);
                 }
             }
 

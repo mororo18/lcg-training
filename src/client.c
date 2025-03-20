@@ -18,12 +18,14 @@
 #include <raylib.h>
 #include <raymath.h>
 
+#include "packet.h"
 #include "client.h"
 #include "server.h"
 #include "window.h"
 #include "bullet.h"
 #include "player.h"
 #include "enemy.h"
+#include "utils.h"
 #include "bullet_array.h"
 #include "enemy_array.h"
 
@@ -73,50 +75,33 @@ void setup_multiplayer_client() {
     servaddr.sin_port = htons(PORT);
 
      // connect the client socket to server socket
-    if (connect(g_client.info.fd, (struct sockaddr*)&servaddr, sizeof(servaddr))
-        != 0) {
+    if (connect(g_client.info.fd, (struct sockaddr*)&servaddr, sizeof(servaddr)) != 0) {
         printf("connection with the server failed...\n");
         exit(0);
     } else {
         printf("connected to the server..\n");
     }
+
+    init_packet_queues();
+    assign_packet_queue_to_client(g_client.info.fd);
 }
 
-uint32_t recieve_player_id_from_server() {
-    uint32_t player_id;
+PlayerAcceptedEvent wait_for_server_approval() {
+    // TODO: add timeout
+    PacketQueue * client_queue = get_packet_queue(g_client.info.fd);
+    while (true) {
+        bool is_fd_ready = is_ready_for_reading(g_client.info.fd);
+        if (pending_packets(g_client.info.fd, client_queue, is_fd_ready)) {
+            Packet packet = {};
+            recieve_packet(&packet, client_queue);
 
-    for (;;) {
-        if (is_ready_for_reading(g_client.info.fd)) {
-            Event event = recieve_event(g_client.info.fd);
-
-            assert(event.type == EVENT_PLAYER_ACCEPTED);
-            player_id = (uint32_t) event.data.player_accepted.id;
-            printf("Player accepted (client id = %u)\n", player_id);
-            break;
-        }
-    }
-
-    return player_id;
-}
-
-/*
-int main () {
-
-
-    for (;;) {
-        char buff[128] = {};
-        if (is_ready_for_reading(g_client.fd)) {
-            ssize_t bytes_read = read(g_client.fd, buff, sizeof(buff));
-            if (bytes_read > 0) {
-                buff[bytes_read] = '\0';
-                printf("read = %s\n", buff);
+            if (packet.type == EVENT_PLAYER_ACCEPTED) {
+                printf("Player accepted (client id = %u)\n", packet.data.player_accepted.id);
+                return packet.data.player_accepted;
             }
         }
     }
-
-    return 0;
 }
-*/
 
 typedef
 struct GameState {
@@ -157,6 +142,7 @@ static void update_client_state(GameState * state) {
 
     if (g_client.info.player_info.life <= 0) {
         state->game_over = true;
+        g_client.my_bullets.lenght = 0;
         return;
     }
 
@@ -236,9 +222,29 @@ static void update_client_state(GameState * state) {
         }
     }
     
+    // Fires a new bullet (boost)
+    if (IsMouseButtonDown(MOUSE_LEFT_BUTTON) 
+        && g_client.info.player_info.boost_enabled)
+    {
+        if (GetTime() - state->last_bullet_timestamp >= 0.4) {
+            Vector2 aiming_direction = Vector2Subtract(
+                GetMousePosition(),
+                g_client.info.player_info.position
+            );
+
+            Bullet new_bullet = {
+                .info = {
+                    .position = g_client.info.player_info.position,
+                },
+                .direction = Vector2Normalize(aiming_direction)
+            };
+
+            state->last_bullet_timestamp = GetTime();
+            push_to_BulletArray(&g_client.my_bullets, new_bullet);
+        }
+
     // Fires a new bullet
-    if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
-        // Fires a new bullet
+    } else if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
         Vector2 aiming_direction = Vector2Subtract(
             GetMousePosition(),
             g_client.info.player_info.position
@@ -305,92 +311,7 @@ static void update_client_state(GameState * state) {
 
 
 
-    // Update position of the enemies and check collision
-    for (int i = 0; i < (int) state->enemies.lenght; i++) {
 
-        float player_distance = Vector2Distance(
-            state->player.position,
-            state->enemies.data[i].position
-        );
-
-        Vector2 new_direction = {};
-
-        // Enemy will chase the player
-        if (player_distance < ENEMY_AWARENESS_RADIUS) {
-            new_direction = Vector2Subtract(
-                state->player.position,
-                state->enemies.data[i].position
-            );
-        } else {
-            new_direction = random_Enemy_direction(state->enemies.data + i);
-        }
-
-        state->enemies.data[i].direction = Vector2Normalize(new_direction);
-
-        Vector2 new_position = Vector2Add(
-            state->enemies.data[i].position,
-            Vector2Scale(state->enemies.data[i].direction, ENEMY_VELOCITY * state->dt)
-        );
-
-        // Check collision with borders
-        if (CheckCollisionPointRec(new_position, window_rect)) {
-            state->enemies.data[i].position = new_position;
-        } else {
-            state->enemies.data[i].direction =
-                Vector2Scale(state->enemies.data[i].direction, -1.0);
-        }
-        
-        // Check collision with Player 
-        if (
-            CheckCollisionCircleRec(
-                state->enemies.data[i].position,
-                ENEMY_RADIUS,
-                state->player.rect
-            )
-        ) {
-            state->player.life--;
-
-            remove_from_EnemyArray(&state->enemies, (size_t) i);
-            i--;
-            PlaySound(state->player_damage_sound);
-        }
-    }
-
-    // Check if player died
-    if (state->player.life <= 0) {
-        state->game_over = true;
-        return;
-    }
-
-    // Spawn enemies
-    if (state->enemies.lenght < MAX_ENEMIES) {
-        const Vector2 possible_directions[] = {
-            up,
-            Vector2Add(up, right),
-            right,
-            Vector2Add(right, down),
-            down,
-            Vector2Add(down, left),
-            left,
-            Vector2Add(left, up),
-        };
-        const int n_directions = sizeof(possible_directions) / sizeof(Vector2);
-        const size_t new_enemies = MAX_ENEMIES - state->enemies.lenght;
-        for (int i = 0; i < (int) new_enemies; i++) {
-            Vector2 rand_direction = Vector2Normalize(possible_directions[rand() % n_directions]);
-
-            Enemy new_enemy = {
-                .position = (Vector2) {
-                    .x = rand() % WINDOW_WIDTH,
-                    .y = rand() % WINDOW_HEIGHT,
-                },
-                .direction = rand_direction,
-            };
-
-            push_to_EnemyArray(&state->enemies, new_enemy);
-        }
-
-    }
     */
 
     /*
@@ -495,12 +416,18 @@ void send_player_position_to_server(PlayerInfo * player_info) {
         .info = *player_info,
     };
 
-    Request request = {
+    Packet packet = {
         .type = REQUEST_PLAYER_INFO_UPDATE,
-        .data = { .player_info_update = pos_update },
+        .data = { .req_player_info_update = pos_update },
     };
 
-    send_request(request, g_client.info.fd);
+    /*
+    printf("Player pos = (%.2f, %.2f)\n",
+            player_info->position.x,
+            player_info->position.y);
+    */
+
+    send_packet(&packet, g_client.info.fd);
 }
 
 void send_bullets_update_to_server(BulletArray * bullet_array) {
@@ -514,14 +441,14 @@ void send_bullets_update_to_server(BulletArray * bullet_array) {
         *req_bullet = *my_bullet;
     }
 
-    Request request = {
+    Packet packet = {
         .type = REQUEST_BULLET_INFO_UPDATE,
         .data = { 
-            .bullets_info_update = bullets_update,
+            .req_bullets_info_update = bullets_update,
         },
     };
 
-    send_request(request, g_client.info.fd);
+    send_packet(&packet, g_client.info.fd);
 }
 
 void init_Client() {
@@ -532,14 +459,18 @@ void init_Client() {
 
     if (g_client.mode == CM_MULTIPLAYER) {
         setup_multiplayer_client(); 
-        uint32_t player_id = recieve_player_id_from_server();
-        state.my_player_id = (int) player_id;
+        PlayerAcceptedEvent player_accepted = wait_for_server_approval();
+        //log_player_info(&player_accepted.info);
+        state.my_player_id = (int) player_accepted.id;
 
-        Player my_player = default_Player();
-        my_player.id = (int) player_id;
+        Player my_player = {};
+        my_player.id = player_accepted.id;
+        my_player.info = player_accepted.info;
 
-        g_client.info.player_info = my_player.info;
-        g_client.info.player_id = (int) player_id;
+        g_client.info.player_id = player_accepted.id;
+        g_client.info.player_info = player_accepted.info;
+
+        //log_player_info(&g_client.info.player_info);
 
         push_to_PlayerArray(&state.players, my_player);
     } else {
@@ -584,24 +515,28 @@ void init_Client() {
             if (g_client.was_bullet_fired) {
                 g_client.was_bullet_fired = false;
 
-                Request req = {
+                Packet req = {
                     .type = REQUEST_BULLET_SHOT,
                 };
-                send_request(req, g_client.info.fd);
+                send_packet(&req, g_client.info.fd);
             }
         }
 
         // Update other Players positions
-        if (is_ready_for_reading(g_client.info.fd)) {
-            //printf("recebendo..\t");
-            Event event = recieve_event(g_client.info.fd);
+        bool is_fd_ready = is_ready_for_reading(g_client.info.fd);
+        PacketQueue * client_queue = get_packet_queue(g_client.info.fd);
+        if (pending_packets(g_client.info.fd, client_queue, is_fd_ready)) {
+            //printf("State bullet array lenght=%lu\n", state.bullets.lenght);
+            Packet packet = {};
+            recieve_packet(&packet, client_queue);
 
-            switch (event.type) {
+            assert(is_event(packet.type));
+            switch (packet.type) {
                 case EVENT_PLAYER_INFO_UPDATE:
                     {
                         //puts("player info update..");
-                        int player_id = event.data.player_info_update.id;
-                        PlayerInfo player_new_info = event.data.player_info_update.info;
+                        int player_id = packet.data.player_info_update_event.id;
+                        PlayerInfo player_new_info = packet.data.player_info_update_event.info;
                         bool player_found = false;
 
 
@@ -639,7 +574,7 @@ void init_Client() {
                         state.enemies.lenght = 0;
 
                         for (size_t i = 0; i < MAX_ENEMIES; i++) {
-                            Vector2 position = event.data.enemies_position_update.position[i];
+                            Vector2 position = packet.data.enemies_position_update.position[i];
                             Enemy enemy = {
                                 .position = position,
                             };
@@ -651,9 +586,9 @@ void init_Client() {
                     {
                         //puts("bullets info update..");
                         state.bullets.lenght = 0;
-                        const size_t info_array_leght = event.data.bullets_info_update.info.lenght;
+                        const size_t info_array_leght = packet.data.bullets_info_update_event.info.lenght;
                         for (size_t i = 0; i < info_array_leght; i++) {
-                            BulletInfo info = BulletInfoArray_get(&event.data.bullets_info_update.info, i);
+                            BulletInfo info = BulletInfoArray_get(&packet.data.bullets_info_update_event.info, i);
 
                             if (info.player_id != g_client.info.player_id) {
                                 Bullet bullet = {
@@ -664,6 +599,29 @@ void init_Client() {
                         }
                     }
                     break;
+                case EVENT_DESTROYED_BULLETS:
+                    {
+                        // TODO: verify if this makes sense
+                        printf("recebidas %lu balas\n", packet.data.destroyed_bullets.bullets.lenght);
+                        BulletInfoArray * bullet_array = &packet.data.destroyed_bullets.bullets;
+                        for (size_t i = 0; i < bullet_array->lenght; i++) {
+                            BulletInfo * destroyed_bullet_info = BulletInfoArray_at(bullet_array, i);
+
+                            for (size_t bullet_index = 0; bullet_index < g_client.my_bullets.lenght; bullet_index++) {
+                                Bullet * local_bullet = BulletArray_at(&g_client.my_bullets, bullet_index);
+
+                                bool is_the_same =
+                                    destroyed_bullet_info->id == local_bullet->info.id
+                                    && destroyed_bullet_info->player_id == local_bullet->info.player_id;
+                                if (is_the_same) {
+                                    puts("removidoooO!!!!!");
+                                    remove_from_BulletArray(&g_client.my_bullets, bullet_index);
+                                    break;
+                                }
+                            }
+                        }
+
+                    } break;
                 case EVENT_ENEMY_KILLED:
                     {
                         //puts("enemy killed..");
@@ -672,7 +630,7 @@ void init_Client() {
                 case EVENT_PLAYERS_WHO_SHOT:
                     {
                         //puts("shots fired..");
-                        PlayerIdArray * who_shot = &event.data.players_who_shot.who_shot;
+                        PlayerIdArray * who_shot = &packet.data.players_who_shot.who_shot;
                         for (size_t i = 0; i < who_shot->lenght; i++) {
                             if (PlayerIdArray_get(who_shot, i) != g_client.info.player_id) {
                                 PlaySound(state.shot_sound);
@@ -680,6 +638,16 @@ void init_Client() {
                             }
                         }
                     } break;
+                case EVENT_PLAYER_ENABLE_BOOST:
+                    {
+                        g_client.info.player_info.boost_enabled = true;
+                    }
+                    break;
+                case EVENT_PLAYER_DISABLE_BOOST:
+                    {
+                        g_client.info.player_info.boost_enabled = false;
+                    }
+                    break;
                 case EVENT_EMPTY:
                     //puts("empty..");
                     break;

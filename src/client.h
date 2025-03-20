@@ -2,79 +2,10 @@
 #define __CLIENT_H_
 
 #include "player.h"
-#include "bullet.h"
 #include "bullet_array.h"
 #include <assert.h>
-#include <stdio.h>
 #include <unistd.h>
 #include <poll.h>
-
-typedef
-enum RequestType {
-    REQUEST_PLAYER_INFO_UPDATE,
-    REQUEST_BULLET_INFO_UPDATE,
-    REQUEST_BULLET_SHOT,
-    REQUEST_EMPTY,
-} RequestType;
-
-typedef
-struct RequestBulletsInfoUpdate {
-    BulletInfoArray info;
-} RequestBulletsInfoUpdate;
-
-typedef
-struct RequestPlayerInfoUpdate {
-    PlayerInfo info;
-} RequestPlayerInfoUpdate;
-
-typedef
-union RequestData {
-    RequestBulletsInfoUpdate bullets_info_update;
-    RequestPlayerInfoUpdate player_info_update;
-} RequestData;
-
-typedef
-struct Request {
-    RequestType type;
-    RequestData data;
-} Request;
-
-inline static _Bool is_ready(int fd, short event) {
-    struct pollfd pfd;
-    pfd.fd = fd;
-    pfd.events = event;
-
-    return poll(&pfd, 1, 0) > 0;
-}
-
-inline static _Bool is_ready_for_writing(int fd) {
-    return is_ready(fd, POLLOUT);
-}
-
-inline static _Bool is_ready_for_reading(int fd) {
-    return is_ready(fd, POLLIN);
-}
-
-inline static
-void send_request(Request request, int fd) {
-    ssize_t ret = write(fd, &request, sizeof(request));
-    assert(ret != -1);
-    assert(ret == sizeof(request));
-}
-
-inline static
-Request recieve_request(int fd) {
-    Request request = {};
-    ssize_t ret = read(fd, &request, sizeof(request));
-
-    //printf("recieved %ld bytes\n", ret);
-
-    if (ret < (ssize_t) sizeof(request)) {
-        request.type = REQUEST_EMPTY;
-    }
-
-    return request;
-}
 
 typedef
 enum ClientMode {
@@ -90,7 +21,6 @@ struct ClientInfo {
 } ClientInfo;
 
 typedef int ClientId;
-
 
 typedef
 struct Client {

@@ -16,8 +16,6 @@ PlayerInfo default_PlayerInfo() {
 Player default_Player() {
     Player player = {
         .info = default_PlayerInfo(),
-        .remaining_boost_time = 1.0,
-        .boost_enabled = false,
         .id = -1,
     };
     return player;

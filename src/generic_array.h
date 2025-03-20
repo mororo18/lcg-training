@@ -6,7 +6,9 @@
 #include "stacktrace.h"
 
 
+#ifndef GENERIC_ARRAY_CAPACITY
 #define GENERIC_ARRAY_CAPACITY 32
+#endif
 
 #define GTYPE(type) \
 typedef \
@@ -59,5 +61,9 @@ void remove_from_##type##Array(type##Array * array, size_t index) { \
 }
 GENERIC_TYPES
 #undef GTYPE
+
+#ifdef GENERIC_ARRAY_CAPACITY
+#undef GENERIC_ARRAY_CAPACITY
+#endif
 
 #endif // GENERIC_TYPES
