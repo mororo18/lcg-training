@@ -3,14 +3,14 @@
 
 #include "bullet.h"
 
-#define GENERIC_ARRAY_CAPACITY 64
+#define GENERIC_ARRAY_CAPACITY 512
 #define GENERIC_TYPES \
     GTYPE(Bullet)
 
 #include "generic_array.h"
 #undef GENERIC_TYPES
 
-#define GENERIC_ARRAY_CAPACITY 64
+#define GENERIC_ARRAY_CAPACITY 512
 #define GENERIC_TYPES \
     GTYPE(BulletInfo)
 

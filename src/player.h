@@ -35,10 +35,10 @@ struct Player {
 Player default_Player();
 PlayerInfo default_PlayerInfo();
 
-static const int PLAYER_LIFE = 15;
+static const int PLAYER_LIFE = 20;
 static const float PLAYER_VELOCITY = 100.0;
 static const float PLAYER_BOOST_TIME = 5.0; // seconds
-static const int PLAYER_BOOST_REQUIRED_DEFEATS = 10;
+static const int PLAYER_BOOST_REQUIRED_DEFEATS = 1;
 
 static const Rectangle PLAYER_RECT = {
     .width = 25.0,

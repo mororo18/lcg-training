@@ -20,12 +20,12 @@
 #include "packet.h"
 #include "server.h"
 #include "client.h"
+#include "config.h"
 #include "player_array.h"
 #include "enemy_array.h"
 #include "client_array.h"
 
 #define PORT 1234
-#define MAX_CLIENTS 5
 
 typedef
 struct Server {
@@ -270,6 +270,8 @@ void update_game_state(float elapsed_secs) {
     }
     */
 
+    //printf("bullet array len=%lu\n", server.bullets_info.lenght);
+
     // Update score of the player
     for (size_t client_i = 0; client_i < server.client_info_array.lenght; client_i++) {
         ClientInfo * client = ClientInfoArray_at(&server.client_info_array, client_i);
@@ -483,7 +485,7 @@ void run_server() {
     }
 
     int64_t start = millis();
-    float broadcast_period = 1.0f / 15.0f;
+    float broadcast_period = 1.0f / 10.0f;
 
     for (;;) {
         // Set the fd set to zero
@@ -563,16 +565,15 @@ void run_server() {
             PacketQueue * client_queue = get_packet_queue(client->fd);
             bool is_fd_ready = FD_ISSET(client->fd, &server.readfds);
             if (pending_packets(client->fd, client_queue, is_fd_ready)) {
-                Packet client_packet = {};
-                recieve_packet(&client_packet, client_queue);
+                Packet * client_packet = recieve_packet(client_queue);
 
-                assert(is_request(client_packet.type));
+                assert(is_request(client_packet->type));
                 //log_packet_type("Server recieved: ", client_packet.type);
-                switch (client_packet.type) {
+                switch (client_packet->type) {
                     case REQUEST_PLAYER_INFO_UPDATE:
                         {
                             PlayerInfo player_new_info =
-                                client_packet.data.req_player_info_update.info;
+                                client_packet->data.req_player_info_update.info;
                             //int player_current_life = client->player_info.life;
                             //int player_current_score = client->player_info.enemies_defeated;
 
@@ -588,7 +589,7 @@ void run_server() {
                     case REQUEST_BULLET_INFO_UPDATE:
                         {
                             BulletInfoArray * updated_bullets =
-                                &client_packet.data.req_bullets_info_update.info;
+                                &client_packet->data.req_bullets_info_update.info;
                             update_bullets_from_player(updated_bullets, client->fd);
                         } break;
                     case REQUEST_BULLET_SHOT:

@@ -32,7 +32,7 @@ struct Client {
 } Client;
 
 
-static const uint32_t CLIENT_UPDATE_RATE = 15;
+static const uint32_t CLIENT_UPDATE_RATE = 30;
 static const float CLIENT_UPDATE_INTERVAL = 1.0f / (float) CLIENT_UPDATE_RATE;
 extern Client g_client;
 

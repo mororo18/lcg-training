@@ -92,12 +92,11 @@ PlayerAcceptedEvent wait_for_server_approval() {
     while (true) {
         bool is_fd_ready = is_ready_for_reading(g_client.info.fd);
         if (pending_packets(g_client.info.fd, client_queue, is_fd_ready)) {
-            Packet packet = {};
-            recieve_packet(&packet, client_queue);
+            Packet * packet = recieve_packet(client_queue);
 
-            if (packet.type == EVENT_PLAYER_ACCEPTED) {
-                printf("Player accepted (client id = %u)\n", packet.data.player_accepted.id);
-                return packet.data.player_accepted;
+            if (packet->type == EVENT_PLAYER_ACCEPTED) {
+                printf("Player accepted (client id = %u)\n", packet->data.player_accepted.id);
+                return packet->data.player_accepted;
             }
         }
     }
@@ -226,7 +225,8 @@ static void update_client_state(GameState * state) {
     if (IsMouseButtonDown(MOUSE_LEFT_BUTTON) 
         && g_client.info.player_info.boost_enabled)
     {
-        if (GetTime() - state->last_bullet_timestamp >= 0.4) {
+        printf("boooostt\n");
+        if (GetTime() - state->last_bullet_timestamp >= 0.1) {
             Vector2 aiming_direction = Vector2Subtract(
                 GetMousePosition(),
                 g_client.info.player_info.position
@@ -234,13 +234,17 @@ static void update_client_state(GameState * state) {
 
             Bullet new_bullet = {
                 .info = {
+                    .id = g_client.bullet_counter,
+                    .player_id = g_client.info.player_id,
                     .position = g_client.info.player_info.position,
                 },
                 .direction = Vector2Normalize(aiming_direction)
             };
 
             state->last_bullet_timestamp = GetTime();
+            g_client.bullet_counter++;
             push_to_BulletArray(&g_client.my_bullets, new_bullet);
+            PlaySound(state->shot_sound);
         }
 
     // Fires a new bullet
@@ -395,14 +399,13 @@ void draw_frame(GameState * state) {
 
 
 
-        /*
         // Draw remaining boost time
-        if (state->player.boost_enabled) {
-            const char * boost_time_fmt = "Remaining boost time: %.2fs";
-            sprintf(str_buff, boost_time_fmt, state->player.remaining_boost_time);
-            DrawText(str_buff, 15, WINDOW_HEIGHT - 60, 20, GRAY);
+        if (g_client.info.player_info.boost_enabled) {
+            const char * boost = "BOOOSSTT!!";
+            //char str_buff[128] = {};
+            //sprintf(str_buff, boost_time_fmt, g_client.info.player_info.remaining_boost_time);
+            DrawText(boost, 15, WINDOW_HEIGHT - 30, 20, GRAY);
         }
-        */
 
         if (state->game_over) {
             DrawText("Congrats! You died!", WINDOW_WIDTH / 3, WINDOW_HEIGHT / 2, 30, GRAY);
@@ -527,16 +530,16 @@ void init_Client() {
         PacketQueue * client_queue = get_packet_queue(g_client.info.fd);
         if (pending_packets(g_client.info.fd, client_queue, is_fd_ready)) {
             //printf("State bullet array lenght=%lu\n", state.bullets.lenght);
-            Packet packet = {};
-            recieve_packet(&packet, client_queue);
+            Packet * packet = recieve_packet(client_queue);
 
-            assert(is_event(packet.type));
-            switch (packet.type) {
+            //printf("packet type = %u\n", packet->type);
+            assert(is_event(packet->type));
+            switch (packet->type) {
                 case EVENT_PLAYER_INFO_UPDATE:
                     {
                         //puts("player info update..");
-                        int player_id = packet.data.player_info_update_event.id;
-                        PlayerInfo player_new_info = packet.data.player_info_update_event.info;
+                        int player_id = packet->data.player_info_update_event.id;
+                        PlayerInfo player_new_info = packet->data.player_info_update_event.info;
                         bool player_found = false;
 
 
@@ -574,7 +577,7 @@ void init_Client() {
                         state.enemies.lenght = 0;
 
                         for (size_t i = 0; i < MAX_ENEMIES; i++) {
-                            Vector2 position = packet.data.enemies_position_update.position[i];
+                            Vector2 position = packet->data.enemies_position_update.position[i];
                             Enemy enemy = {
                                 .position = position,
                             };
@@ -586,9 +589,9 @@ void init_Client() {
                     {
                         //puts("bullets info update..");
                         state.bullets.lenght = 0;
-                        const size_t info_array_leght = packet.data.bullets_info_update_event.info.lenght;
+                        const size_t info_array_leght = packet->data.bullets_info_update_event.info.lenght;
                         for (size_t i = 0; i < info_array_leght; i++) {
-                            BulletInfo info = BulletInfoArray_get(&packet.data.bullets_info_update_event.info, i);
+                            BulletInfo info = BulletInfoArray_get(&packet->data.bullets_info_update_event.info, i);
 
                             if (info.player_id != g_client.info.player_id) {
                                 Bullet bullet = {
@@ -602,8 +605,8 @@ void init_Client() {
                 case EVENT_DESTROYED_BULLETS:
                     {
                         // TODO: verify if this makes sense
-                        printf("recebidas %lu balas\n", packet.data.destroyed_bullets.bullets.lenght);
-                        BulletInfoArray * bullet_array = &packet.data.destroyed_bullets.bullets;
+                        printf("recebidas %lu balas\n", packet->data.destroyed_bullets.bullets.lenght);
+                        BulletInfoArray * bullet_array = &packet->data.destroyed_bullets.bullets;
                         for (size_t i = 0; i < bullet_array->lenght; i++) {
                             BulletInfo * destroyed_bullet_info = BulletInfoArray_at(bullet_array, i);
 
@@ -630,7 +633,7 @@ void init_Client() {
                 case EVENT_PLAYERS_WHO_SHOT:
                     {
                         //puts("shots fired..");
-                        PlayerIdArray * who_shot = &packet.data.players_who_shot.who_shot;
+                        PlayerIdArray * who_shot = &packet->data.players_who_shot.who_shot;
                         for (size_t i = 0; i < who_shot->lenght; i++) {
                             if (PlayerIdArray_get(who_shot, i) != g_client.info.player_id) {
                                 PlaySound(state.shot_sound);

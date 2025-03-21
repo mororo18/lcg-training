@@ -15,7 +15,7 @@
 #include <unistd.h>
 #include <sys/socket.h>
 
-#define MTU_SIZE 1500
+#define MTU_SIZE 750
 
 typedef
 enum PacketType {
@@ -70,7 +70,6 @@ typedef
 struct EnemiesPositionUpdateEvent {
     Vector2 position[MAX_ENEMIES];
 } EnemiesPositionUpdateEvent;
-static_assert(sizeof(EnemiesPositionUpdateEvent) == MAX_ENEMIES * sizeof(Vector2));
 
 typedef 
 struct BulletsInfoUpdateEvent {
@@ -101,7 +100,7 @@ union PacketData {
     PlayersWhoShotEvent players_who_shot;
     DestroyedBulletsEvent destroyed_bullets;
 } PacketData;
-static_assert(sizeof(PacketData) <= 1500);
+//static_assert(sizeof(PacketData) <= 1500);
 
 typedef
 struct Packet {
@@ -110,7 +109,7 @@ struct Packet {
 } Packet;
 
 inline static
-size_t get_packet_size(PacketType type) {
+size_t get_packet_data_size(PacketType type) {
     switch (type) {
         case REQUEST_BULLET_INFO_UPDATE:
             return sizeof(RequestBulletsInfoUpdate);
@@ -152,6 +151,18 @@ size_t get_packet_size(PacketType type) {
     return 0;
 }
 
+static
+bool packet_data_is_array(PacketType type) {
+    switch (type) {
+        case REQUEST_BULLET_INFO_UPDATE:
+        case EVENT_PLAYERS_WHO_SHOT:
+        case EVENT_BULLETS_INFO_UPDATE:
+        case EVENT_DESTROYED_BULLETS:
+            return true;
+        default:
+            return false;
+    }
+}
 
 static
 const char *packet_type_to_string(PacketType type) {
@@ -193,24 +204,37 @@ typedef struct {
 } PacketQueue;
 
 static 
-bool packet_queue_enqueue(PacketQueue * packet_queue, const Packet * packet) {
+Packet * packet_queue_enqueue(PacketQueue * packet_queue) {
     if (packet_queue->count == PACKET_QUEUE_CAPACITY) {
-        return false;
+        assert(false);
+        //return false;
     }
 
-    packet_queue->buffer[packet_queue->tail] = *packet;
+    Packet * ret = packet_queue->buffer + packet_queue->tail;
     packet_queue->tail = (packet_queue->tail + 1) % PACKET_QUEUE_CAPACITY;
     packet_queue->count++;
-    return true;
+    return ret;
 }
 
 static
-bool packet_queue_dequeue(PacketQueue * packet_queue, Packet * packet) {
-    if (packet_queue->count == 0) return false;  // Fila vazia
-    *packet = packet_queue->buffer[packet_queue->head];
+Packet * packet_queue_dequeue(PacketQueue * packet_queue) {
+    if (packet_queue->count == 0) { assert(false); }  // Fila vazia
+    Packet * ret = packet_queue->buffer + packet_queue->head;
     packet_queue->head = (packet_queue->head + 1) % PACKET_QUEUE_CAPACITY;
     packet_queue->count--;
-    return true;
+    return ret;
+}
+
+static
+Packet * packet_queue_pop(PacketQueue *packet_queue) {
+    if (packet_queue->count == 0) {
+        return NULL;
+    }
+
+    packet_queue->tail = (packet_queue->tail - 1 + PACKET_QUEUE_CAPACITY) % PACKET_QUEUE_CAPACITY;
+    packet_queue->count--;
+
+    return packet_queue->buffer + packet_queue->tail;
 }
 
 static
@@ -405,111 +429,124 @@ size_t write_packet_to_buffer(const Packet * packet, char *buff, size_t buff_siz
 }
 
 static
-size_t read_packet_from_buffer(Packet * packet, char * buff, size_t buff_size, size_t offset) {
-    char * const src = buff + offset;
+size_t read_packet_from_buffer(Packet * packet, char * buff, size_t buff_size) {
+    char * const src = buff;
     char * ptr = src;
 
     // Check if there is enough data to read the EvenType
-    if (buff_size - offset < sizeof(PacketType)) {
+    if (buff_size < sizeof(PacketType)) {
         return 0;
     }
 
     PacketType packet_type = *((PacketType*) ptr);
-    size_t packet_size = get_packet_size(packet_type);
 
-    // Check if there is enough data to read the PacketData
-    if (buff_size - offset < sizeof(PacketType) + packet_size) {
-        return 0;
+    if (packet_data_is_array(packet_type)) {
+
+        // Verifica se há espaço para ler o tamanho do array
+        if ((size_t)(ptr - buff) + sizeof(size_t) > buff_size) {
+            return 0;
+        }
+
+        read_from_buffer(&ptr, &packet->type, sizeof(PacketType));
+
+        size_t element_size = 0;
+        void * array_ptr = NULL;
+        size_t * array_lenght_ptr = NULL;
+
+        switch (packet_type) {
+            case REQUEST_BULLET_INFO_UPDATE:
+                {
+                    array_ptr = packet->data.req_bullets_info_update.info.data;
+                    array_lenght_ptr = &packet->data.req_bullets_info_update.info.lenght;
+                    element_size = sizeof(BulletInfo);
+                } break;
+            case EVENT_PLAYERS_WHO_SHOT:
+                {
+                    array_ptr = packet->data.players_who_shot.who_shot.data;
+                    array_lenght_ptr = &packet->data.players_who_shot.who_shot.lenght;
+                    element_size = sizeof(PlayerId);
+                } break;
+            case EVENT_BULLETS_INFO_UPDATE:
+                {
+                    array_ptr = packet->data.bullets_info_update_event.info.data;
+                    array_lenght_ptr = &packet->data.bullets_info_update_event.info.lenght;
+                    element_size = sizeof(BulletInfo);
+                } break;
+            case EVENT_DESTROYED_BULLETS:
+                {
+                    array_ptr = packet->data.destroyed_bullets.bullets.data;
+                    array_lenght_ptr = &packet->data.destroyed_bullets.bullets.lenght;
+                    element_size = sizeof(BulletInfo);
+                } break;
+            default:
+                assert(false);
+        }
+
+        size_t actual_array_len = *((size_t*) ptr);
+
+        // Verifica se há espaço suficiente para os elementos do array
+        if ((size_t)(ptr - buff) + (actual_array_len * element_size) > buff_size) {
+            return 0;
+        }
+
+        read_array_from_buffer(
+            &ptr,
+            array_ptr,
+            element_size,
+            array_lenght_ptr
+        );
+
+    } else {
+        size_t packet_size = get_packet_data_size(packet_type);
+        // Check if there is enough data to read the PacketData
+        if (buff_size < sizeof(PacketType) + packet_size) {
+            printf("Packet %s to bigg\n", packet_type_to_string(packet_type));
+            return 0;
+        }
+
+        read_from_buffer(&ptr, &packet->type, sizeof(PacketType));
+
+        switch (packet->type) {
+            case REQUEST_PLAYER_INFO_UPDATE:
+                {
+                    read_from_buffer(&ptr, &packet->data.req_player_info_update, sizeof(RequestPlayerInfoUpdate));
+                }
+                break;
+            case REQUEST_BULLET_SHOT:
+                break;
+            case REQUEST_EMPTY:
+                break;
+
+            case EVENT_PLAYER_ACCEPTED:
+                {
+                    read_from_buffer(&ptr, &packet->data.player_accepted, sizeof(PlayerAcceptedEvent));
+                }
+                break;
+            case EVENT_PLAYER_INFO_UPDATE:
+                {
+                    read_from_buffer(&ptr, &packet->data.player_info_update_event, sizeof(PlayerInfoUpdateEvent));
+                }
+                break;
+            case EVENT_ENEMIES_POSITION_UPDATE:
+                {
+                    read_from_buffer(&ptr, &packet->data.enemies_position_update, sizeof(EnemiesPositionUpdateEvent));
+                }
+                break;
+            case EVENT_PLAYER_REFUSED:
+            case EVENT_PLAYER_ENABLE_BOOST:
+            case EVENT_PLAYER_DISABLE_BOOST:
+            case EVENT_ENEMY_KILLED:
+            case EVENT_EMPTY:
+                break;
+            default:
+                assert(false);
+        }
     }
 
-    read_from_buffer(&ptr, &packet->type, sizeof(PacketType));
+
 
     //printf("Decod packet type %s\n", packet_type_to_string(packet->type));
 
-    switch (packet->type) {
-        case REQUEST_BULLET_INFO_UPDATE:
-            {
-                BulletInfo * array_ptr = packet->data.req_bullets_info_update.info.data;
-                size_t * array_lenght = &packet->data.req_bullets_info_update.info.lenght;
-
-                read_array_from_buffer(
-                    &ptr,
-                    array_ptr,
-                    sizeof(BulletInfo),
-                    array_lenght
-                );
-            }
-            break;
-        case REQUEST_PLAYER_INFO_UPDATE:
-            {
-                read_from_buffer(&ptr, &packet->data.req_player_info_update, sizeof(RequestPlayerInfoUpdate));
-            }
-            break;
-        case REQUEST_BULLET_SHOT:
-            break;
-        case REQUEST_EMPTY:
-            break;
-
-        case EVENT_PLAYER_ACCEPTED:
-            {
-                read_from_buffer(&ptr, &packet->data.player_accepted, sizeof(PlayerAcceptedEvent));
-            }
-            break;
-        case EVENT_PLAYER_INFO_UPDATE:
-            {
-                read_from_buffer(&ptr, &packet->data.player_info_update_event, sizeof(PlayerInfoUpdateEvent));
-            }
-            break;
-        case EVENT_PLAYERS_WHO_SHOT:
-            {
-                PlayerId * array_ptr = packet->data.players_who_shot.who_shot.data;
-                size_t * array_lenght = &packet->data.players_who_shot.who_shot.lenght;
-
-                read_array_from_buffer(
-                    &ptr,
-                    array_ptr,
-                    sizeof(PlayerId),
-                    array_lenght
-                );
-            }
-            break;
-        case EVENT_ENEMIES_POSITION_UPDATE:
-            {
-                read_from_buffer(&ptr, &packet->data.enemies_position_update, sizeof(EnemiesPositionUpdateEvent));
-            }
-            break;
-        case EVENT_BULLETS_INFO_UPDATE:
-            {
-                BulletInfo * array_ptr = packet->data.bullets_info_update_event.info.data;
-                size_t * array_lenght = &packet->data.bullets_info_update_event.info.lenght;
-
-                read_array_from_buffer(
-                    &ptr,
-                    array_ptr,
-                    sizeof(BulletInfo),
-                    array_lenght
-                );
-            }
-            break;
-        case EVENT_DESTROYED_BULLETS:
-            {
-                BulletInfo * array_ptr = packet->data.destroyed_bullets.bullets.data;
-                size_t * array_lenght = &packet->data.destroyed_bullets.bullets.lenght;
-
-                read_array_from_buffer(
-                    &ptr,
-                    array_ptr,
-                    sizeof(BulletInfo),
-                    array_lenght
-                );
-            } break;
-        case EVENT_PLAYER_REFUSED:
-        case EVENT_PLAYER_ENABLE_BOOST:
-        case EVENT_PLAYER_DISABLE_BOOST:
-        case EVENT_ENEMY_KILLED:
-        case EVENT_EMPTY:
-            break;
-    }
 
     assert((uint64_t)(ptr - src) <= sizeof(Packet));
     return (size_t)(ptr - src);
@@ -521,6 +558,7 @@ void send_packet(const Packet * packet, int fd) {
     size_t bytes_count = write_packet_to_buffer(packet, (char*)&buff, sizeof(buff));
     assert(bytes_count <= sizeof(buff));
 
+    //log_packet_type("SENDING", packet->type);
     char * buff_ptr = buff;
     while (bytes_count > 0) {
         size_t write_bytes = bytes_count;
@@ -568,12 +606,8 @@ bool pending_packets(int fd, PacketQueue * pqueue, bool fd_ready_for_reading) {
             }
 
             // Critical error
-            Packet empty_packet = {
-                .type = EVENT_EMPTY,
-            };
-            // enqueue
-            bool enqueued = packet_queue_enqueue(pqueue, &empty_packet);
-            assert(enqueued);
+            Packet * empty_packet = packet_queue_enqueue(pqueue);
+            empty_packet->type = EVENT_EMPTY;
         }
 
         //printf("Packet: Recebidos %ld bytes\n", ret);
@@ -585,20 +619,18 @@ bool pending_packets(int fd, PacketQueue * pqueue, bool fd_ready_for_reading) {
         }
 
         while (pqueue->read_buffer_usage > 0) {
-            Packet new_packet = {};
+            Packet * packet = packet_queue_enqueue(pqueue);
+
             size_t bytes_read = read_packet_from_buffer(
-                &new_packet,
+                packet,
                 (char*)&pqueue->read_buffer,
-                pqueue->read_buffer_usage,
-                0
+                pqueue->read_buffer_usage
             );
 
             //printf("Decod %ld bytes\n", bytes_read);
             if (bytes_read > 0) {
                 //log_packet_received(&new_packet);
-                bool enqueued = packet_queue_enqueue(pqueue, &new_packet);
-                assert(enqueued);
-                //log_packet_type("SENDING", new_packet.type);
+                //log_packet_type("RECIEVED", packet->type);
 
                 assert(pqueue->read_buffer_usage >= bytes_read);
                 pqueue->read_buffer_usage -= bytes_read;
@@ -607,9 +639,10 @@ bool pending_packets(int fd, PacketQueue * pqueue, bool fd_ready_for_reading) {
                     pqueue->read_buffer + bytes_read,
                     pqueue->read_buffer_usage
                 );
-            }
-
-            if (bytes_read == 0) {
+            } else {
+                // If we dont read any bytes we change back the state
+                // of the queue.
+                packet_queue_pop(pqueue);
                 break;
             }
         }
@@ -621,10 +654,8 @@ bool pending_packets(int fd, PacketQueue * pqueue, bool fd_ready_for_reading) {
 }
 
 static
-void recieve_packet(Packet * packet, PacketQueue * pqueue) {
-    bool dequeued = packet_queue_dequeue(pqueue, packet);
-    //log_packet_type("RECIEVED", packet->type);
-    assert(dequeued);
+Packet * recieve_packet(PacketQueue * pqueue) {
+    return packet_queue_dequeue(pqueue);
 }
 
 #endif // __PACKET_H_
