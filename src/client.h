@@ -33,9 +33,9 @@ struct Client {
 
 
 static const uint32_t CLIENT_UPDATE_RATE = 30;
-static const float CLIENT_UPDATE_INTERVAL = 1.0f / (float) CLIENT_UPDATE_RATE;
-extern Client g_client;
+static const uint32_t CLIENT_UPDATE_INTERVAL_MS = 1000 / CLIENT_UPDATE_RATE;
 
-void init_Client();
+void init_client(Client * client, ClientMode mode);
+void run_client(Client * client);
 
 #endif // __CLIENT_H_

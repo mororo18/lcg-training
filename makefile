@@ -1,47 +1,33 @@
-CFLAGS = -O3 -std=c2x -Wall -Wextra -Wpedantic -Wconversion -g -rdynamic
+CFLAGS = -O3 -std=c2x -Wall -Wextra -Wpedantic -Wconversion -g -D_XOPEN_SOURCE=700 -lm
 
 SRC_DIR = src
-GAME_SRC = player.c bullet.c enemy.c client.c
-HEADERS = window.h player.h bullet.h enemy.h client.h
+GAME_SRC = main.c player.c bullet.c enemy.c client.c server.c
+HEADERS = bullet_array.h bullet.h client_array.h client.h config.h enemy_array.h enemy.h \
+          generic_array.h packet.h player_array.h player.h server.h stacktrace.h \
+          utils.h window.h
 
-CLIENT_SRC = main.c $(GAME_SRC)
-CLIENT = game
+TARGET = game
 
-SERVER_SRC = server.c $(GAME_SRC)
-SERVER = server
-
-CLIENT_OBJ_WITH_PATH = $(patsubst %.c, $(SRC_DIR)/%.o, $(CLIENT_SRC))
-SERVER_OBJ_WITH_PATH = $(patsubst %.c, $(SRC_DIR)/%.o, $(SERVER_SRC))
-
+OBJ_WITH_PATH = $(patsubst %.c, $(SRC_DIR)/%.o, $(GAME_SRC))
 RAYLIB_DIR = $(CURDIR)/external/raylib/src
 
 ifeq ($(OS),Windows_NT)
 	RAYLIB = raylib.dll
-
-    RUN_CMD = cmd /C "set PATH=$(RAYLIB_DIR);%PATH% && .\$(CLIENT).exe"
-    RUN_SERVER_CMD = cmd /C "set PATH=$(RAYLIB_DIR);%PATH% && .\$(SERVER).exe"
+    RUN_CMD = cmd /C "set PATH=$(RAYLIB_DIR);%PATH% && .\$(TARGET).exe"
 else
 	RAYLIB = libraylib.so
-	#LINKS = -lGL -lm -lpthread -ldl -lrt -lX12
-
-	RUN_CMD = LD_LIBRARY_PATH=$(RAYLIB_DIR) ./$(CLIENT)
-	RUN_SERVER_CMD = LD_LIBRARY_PATH=$(RAYLIB_DIR) ./$(SERVER)
+	RUN_CMD = LD_LIBRARY_PATH=$(RAYLIB_DIR) ./$(TARGET)
 endif
 
 RAYLIB_INC = -I$(RAYLIB_DIR) -L$(RAYLIB_DIR) -lraylib
 
 .PHONY: all clean clean-all
 
-all: $(CLIENT) $(SERVER)
-
-$(CLIENT): $(CLIENT_OBJ_WITH_PATH) $(RAYLIB_DIR)/$(RAYLIB)
-	$(CC) $(CFLAGS) -o $@ $^ $(RAYLIB_INC)
-
-$(SERVER): $(SERVER_OBJ_WITH_PATH) $(RAYLIB_DIR)/$(RAYLIB)
-	$(CC) $(CFLAGS) -o $@ $^ $(RAYLIB_INC)
+$(TARGET): $(OBJ_WITH_PATH) $(RAYLIB_DIR)/$(RAYLIB)
+	$(CC) -o $@ $^ $(RAYLIB_INC) $(CFLAGS) 
 
 $(SRC_DIR)/%.o: $(SRC_DIR)/%.c $(wildcard $(SRC_DIR)/%.h)
-	$(CC) $(CFLAGS) -c $^ -o $@ $(RAYLIB_INC)
+	$(CC) -c $^ -o $@ $(RAYLIB_INC) $(CFLAGS) 
 
 $(RAYLIB_DIR)/$(RAYLIB):
 	$(MAKE) PLATFORM=PLATFORM_DESKTOP RAYLIB_LIBTYPE=SHARED -C $(RAYLIB_DIR) 
@@ -50,14 +36,14 @@ debug: clean
 debug: CFLAGS += -DDEBUG
 debug: run
 
-run: clean $(CLIENT)
-	$(RUN_CMD)
+run: clean $(TARGET)
+	$(RUN_CMD) --client
 
-server-run: clean $(SERVER)
-	$(RUN_SERVER_CMD)
+server-run: clean $(TARGET)
+	$(RUN_CMD) --server
 
 clean:
-	$(RM) $(CLIENT) $(CLIENT_OBJ_WITH_PATH) $(SERVER) $(SERVER_OBJ_WITH_PATH) $(RAYLIB_DIR)/$(RAYLIB)
+	$(RM) $(TARGET) $(OBJ_WITH_PATH) $(RAYLIB_DIR)/$(RAYLIB)
 
 clean-all: clean
 	$(MAKE) -C $(RAYLIB_DIR) clean

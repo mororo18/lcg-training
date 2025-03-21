@@ -4,7 +4,6 @@
 #include "player_array.h"
 #include "bullet_array.h"
 #include "player.h"
-#include "utils.h"
 #include "config.h"
 #include "player_array.h"
 #include "bullet_array.h"
@@ -15,10 +14,10 @@
 #include <unistd.h>
 #include <sys/socket.h>
 
-#define MTU_SIZE 750
+#define MTU_SIZE 1500
 
 typedef
-enum PacketType {
+enum  __attribute__ ((__packed__)) PacketType {
     REQUEST_PLAYER_INFO_UPDATE,
     REQUEST_BULLET_INFO_UPDATE,
     REQUEST_BULLET_SHOT,
@@ -100,13 +99,14 @@ union PacketData {
     PlayersWhoShotEvent players_who_shot;
     DestroyedBulletsEvent destroyed_bullets;
 } PacketData;
-//static_assert(sizeof(PacketData) <= 1500);
 
 typedef
 struct Packet {
     PacketType type;
     PacketData data;
 } Packet;
+
+#define PACKET_SIZE sizeof(Packet)
 
 inline static
 size_t get_packet_data_size(PacketType type) {
@@ -187,15 +187,15 @@ const char *packet_type_to_string(PacketType type) {
     }
 }
 
-static
+static inline
 void log_packet_type(const char *prefix, PacketType type) {
     printf("[%s] Packet Type: %s (%d)\n", prefix, packet_type_to_string(type), type);
 }
 
-#define PACKET_QUEUE_CAPACITY sizeof(Packet)
+#define PACKET_QUEUE_CAPACITY PACKET_SIZE
 typedef struct {
     Packet buffer[PACKET_QUEUE_CAPACITY];
-    char read_buffer[sizeof(Packet)];
+    char read_buffer[PACKET_SIZE];
     size_t read_buffer_usage;
     int client_fd;
     size_t head;
@@ -207,7 +207,6 @@ static
 Packet * packet_queue_enqueue(PacketQueue * packet_queue) {
     if (packet_queue->count == PACKET_QUEUE_CAPACITY) {
         assert(false);
-        //return false;
     }
 
     Packet * ret = packet_queue->buffer + packet_queue->tail;
@@ -247,7 +246,7 @@ PacketQueue packet_queues[MAX_PLAYERS] = {};
 static
 const size_t packet_queues_lenght = sizeof(packet_queues) / sizeof(PacketQueue);
 
-static
+static inline
 void init_packet_queues() {
     for (size_t i = 0; i < packet_queues_lenght; i++) {
         packet_queues[i].client_fd = -1;
@@ -258,7 +257,7 @@ void init_packet_queues() {
     }
 }
 
-static
+static inline
 void assign_packet_queue_to_client(int fd) {
     assert(fd > 0);
     for (size_t i = 0; i < packet_queues_lenght; i++) {
@@ -271,7 +270,7 @@ void assign_packet_queue_to_client(int fd) {
     assert(false);
 }
 
-static
+static inline
 void reset_packet_queue(int fd) {
     assert(fd > 0);
     for (size_t i = 0; i < packet_queues_lenght; i++) {
@@ -288,7 +287,7 @@ void reset_packet_queue(int fd) {
     assert(false);
 }
 
-static
+static inline
 PacketQueue * get_packet_queue(int fd) {
     assert(fd > 0);
     for (size_t i = 0; i < packet_queues_lenght; i++) {
@@ -300,7 +299,7 @@ PacketQueue * get_packet_queue(int fd) {
     assert(false);
 }
 
-static
+static inline
 void assert_buffer_fitness(char * ptr, size_t size, char * buff, size_t buff_size) {
     char * begin = buff;
     char * end = buff + buff_size;
@@ -334,7 +333,7 @@ void read_array_from_buffer(char **ptr, void *array, size_t element_size, size_t
 
 static
 size_t write_packet_to_buffer(const Packet * packet, char *buff, size_t buff_size) {
-    assert(buff_size >= sizeof(Packet));
+    assert(buff_size >= PACKET_SIZE);
     char * ptr = buff;
     write_to_buffer(&ptr, &packet->type, sizeof(PacketType));
 
@@ -424,7 +423,7 @@ size_t write_packet_to_buffer(const Packet * packet, char *buff, size_t buff_siz
             break;
     }
 
-    assert((size_t)(ptr - buff) <= sizeof(Packet));
+    assert((size_t)(ptr - buff) <= PACKET_SIZE);
     return (size_t)(ptr - buff);
 }
 
@@ -543,22 +542,16 @@ size_t read_packet_from_buffer(Packet * packet, char * buff, size_t buff_size) {
         }
     }
 
-
-
-    //printf("Decod packet type %s\n", packet_type_to_string(packet->type));
-
-
-    assert((uint64_t)(ptr - src) <= sizeof(Packet));
+    assert((uint64_t)(ptr - src) <= PACKET_SIZE);
     return (size_t)(ptr - src);
 }
 
 static
 void send_packet(const Packet * packet, int fd) {
-    char buff[sizeof(Packet)] = {};
+    char buff[PACKET_SIZE] = {};
     size_t bytes_count = write_packet_to_buffer(packet, (char*)&buff, sizeof(buff));
     assert(bytes_count <= sizeof(buff));
 
-    //log_packet_type("SENDING", packet->type);
     char * buff_ptr = buff;
     while (bytes_count > 0) {
         size_t write_bytes = bytes_count;
@@ -566,12 +559,15 @@ void send_packet(const Packet * packet, int fd) {
             write_bytes = MTU_SIZE;
         }
 
-        //ssize_t ret = send(fd, buff_ptr, write_bytes, MSG_DONTWAIT);
         ssize_t ret = write(fd, buff_ptr, write_bytes);
 
         if (ret == -1) {
             // TODO: treat errno
-            assert(false);
+            if (errno == EPIPE) {
+                printf("Connection was closed.\n");
+                close(fd);
+                return;
+            }
         }
 
         bytes_count -= (size_t) ret;
@@ -610,8 +606,6 @@ bool pending_packets(int fd, PacketQueue * pqueue, bool fd_ready_for_reading) {
             empty_packet->type = EVENT_EMPTY;
         }
 
-        //printf("Packet: Recebidos %ld bytes\n", ret);
-
         if (ret != -1) {
             pqueue->read_buffer_usage += (size_t) ret;
         } else {
@@ -627,10 +621,7 @@ bool pending_packets(int fd, PacketQueue * pqueue, bool fd_ready_for_reading) {
                 pqueue->read_buffer_usage
             );
 
-            //printf("Decod %ld bytes\n", bytes_read);
             if (bytes_read > 0) {
-                //log_packet_received(&new_packet);
-                //log_packet_type("RECIEVED", packet->type);
 
                 assert(pqueue->read_buffer_usage >= bytes_read);
                 pqueue->read_buffer_usage -= bytes_read;
@@ -648,8 +639,6 @@ bool pending_packets(int fd, PacketQueue * pqueue, bool fd_ready_for_reading) {
         }
     }
 
-    //bool dequeued = packet_queue_dequeue(packet);
-    //assert(dequeued);
     return !packet_queue_is_empty(pqueue);
 }
 
