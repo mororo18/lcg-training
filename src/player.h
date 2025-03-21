@@ -38,23 +38,12 @@ PlayerInfo default_PlayerInfo();
 static const int PLAYER_LIFE = 7;
 static const float PLAYER_VELOCITY = 100.0;
 static const float PLAYER_BOOST_TIME = 5.0; // seconds
-static const int PLAYER_BOOST_REQUIRED_DEFEATS = 1;
+static const int PLAYER_BOOST_REQUIRED_DEFEATS = 7;
 
 static const Rectangle PLAYER_RECT = {
     .width = 25.0,
     .height = 25.0,
 };
 
-
-#define PLAYER_ARRAY_CAPACITY 16
-
-typedef
-struct PlayerArray {
-    Player data[PLAYER_ARRAY_CAPACITY];
-    size_t lenght;
-} PlayerArray;
-
-void push_to_PlayerArray(PlayerArray * array, Player bullet);
-void remove_from_PlayerArray(PlayerArray * array, size_t index);
 
 #endif // _PLAYER_H

@@ -1,6 +1,5 @@
 #include "player.h"
 #include "window.h"
-#include <stdlib.h>
 #include <err.h>
 
 
@@ -19,22 +18,4 @@ Player default_Player() {
         .id = -1,
     };
     return player;
-}
-
-void push_to_PlayerArray(PlayerArray * array, Player bullet) {
-    if (array->lenght == PLAYER_ARRAY_CAPACITY) {
-        err(EXIT_FAILURE, "BulletArray is full");
-    }
-
-    array->data[array->lenght] = bullet;
-    array->lenght++;
-}
-
-void remove_from_PlayerArray(PlayerArray * array, size_t index) {
-    if (index >= array->lenght) {
-        err(EXIT_FAILURE, "index out of bounds");
-    }
-
-    array->data[index] = array->data[array->lenght-1];
-    array->lenght--;
 }

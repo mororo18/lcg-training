@@ -391,7 +391,6 @@ void run_server(Server * server) {
     }
 
     int64_t start = millis();
-    float broadcast_period = 1.0f / 10.0f;
 
     while (true) {
         // Set the fd set to zero
