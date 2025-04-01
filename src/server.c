@@ -98,6 +98,13 @@ void init_server(Server * server) {
 }
 
 static
+void handle_invalid_client(ClientInfo * client) {
+    assert(!is_fd_valid(client->fd));
+    printf("Client (fd=%d) removed!\n", client->fd);
+    reset_packet_queue(client->fd);
+}
+
+static
 void send_player_info_to_client(PlayerInfo * player_info, ClientInfo * src, ClientInfo * dest) {
     PlayerInfoUpdateEvent player_info_update = {
         .id = src->fd,
@@ -403,6 +410,13 @@ void run_server(Server * server) {
         for (size_t i = 0; i < server->client_info_array.lenght; i++) {
             ClientInfo * client = ClientInfoArray_at(&server->client_info_array, i);
 
+            if (!is_fd_valid(client->fd)) {
+                handle_invalid_client(client);
+                remove_from_ClientInfoArray(&server->client_info_array, i);
+                i--;
+                continue;
+            }
+
             if (client->fd > 0) {
                 FD_SET(client->fd, &server->readfds);
             }
@@ -468,7 +482,7 @@ void run_server(Server * server) {
             ClientInfo * client = ClientInfoArray_at(&server->client_info_array, (size_t) i);
 
             if (!is_fd_valid(client->fd)) {
-                reset_packet_queue(client->fd);
+                handle_invalid_client(client);
                 remove_from_ClientInfoArray(&server->client_info_array, (size_t) i);
                 i--;
                 continue;
@@ -479,8 +493,8 @@ void run_server(Server * server) {
             if (pending_packets(client->fd, client_queue, is_fd_ready)) {
                 Packet * client_packet = recieve_packet(client_queue);
 
-                assert(is_request(client_packet->type));
-                //log_packet_type("Server recieved: ", client_packet.type);
+                log_packet_type("Server recieved: ", client_packet->type);
+                assert(is_request(client_packet->type) || client_packet->type == PACKET_INVALID);
                 switch (client_packet->type) {
                     case REQUEST_PLAYER_INFO_UPDATE:
                         {
@@ -506,6 +520,8 @@ void run_server(Server * server) {
                             remove_from_ClientInfoArray(&server->client_info_array, (size_t) i);
                             i--;
                         } break;
+                    case PACKET_INVALID:
+                        break;
                     default:
                         assert(false);
                 };

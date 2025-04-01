@@ -34,7 +34,9 @@ enum  __attribute__ ((__packed__)) PacketType {
     EVENT_ENEMY_KILLED,
     EVENT_BULLETS_INFO_UPDATE,
     EVENT_DESTROYED_BULLETS,
-    EVENT_TYPE_RANGE
+    EVENT_TYPE_RANGE,
+
+    PACKET_INVALID,
 } PacketType;
 
 static inline bool is_event(PacketType type) {
@@ -562,12 +564,19 @@ void send_packet(const Packet * packet, int fd) {
         ssize_t ret = write(fd, buff_ptr, write_bytes);
 
         if (ret == -1) {
-            // TODO: treat errno
-            if (errno == EPIPE) {
-                printf("Connection was closed.\n");
-                close(fd);
-                return;
-            }
+            switch (errno) {
+                case EBADF: // Bad file descriptor
+                case EPIPE: // Broken Pipe
+                    {
+                        printf("Connection was closed.\n");
+                        close(fd);
+                        return;
+                    } break;
+                default:
+                    printf("Erro: %s\n", strerror(errno));
+            };
+
+            printf("erron=%u\n", errno);
         }
 
         bytes_count -= (size_t) ret;
@@ -603,7 +612,7 @@ bool pending_packets(int fd, PacketQueue * pqueue, bool fd_ready_for_reading) {
 
             // Critical error
             Packet * empty_packet = packet_queue_enqueue(pqueue);
-            empty_packet->type = EVENT_EMPTY;
+            empty_packet->type = PACKET_INVALID;
         }
 
         if (ret != -1) {

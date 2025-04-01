@@ -26,8 +26,8 @@ RAYLIB_INC = -I$(RAYLIB_DIR) -L$(RAYLIB_DIR) -lraylib
 $(TARGET): $(OBJ_WITH_PATH) $(RAYLIB_DIR)/$(RAYLIB)
 	$(CC) -o $@ $^ $(RAYLIB_INC) $(CFLAGS) 
 
-$(SRC_DIR)/%.o: $(SRC_DIR)/%.c $(wildcard $(SRC_DIR)/%.h)
-	$(CC) -c $^ -o $@ $(RAYLIB_INC) $(CFLAGS) 
+$(SRC_DIR)/%.o: $(SRC_DIR)/%.c $(wildcard $(SRC_DIR)/*.h)
+	$(CC) -c $< -o $@ $(RAYLIB_INC) $(CFLAGS) 
 
 $(RAYLIB_DIR)/$(RAYLIB):
 	$(MAKE) PLATFORM=PLATFORM_DESKTOP RAYLIB_LIBTYPE=SHARED -C $(RAYLIB_DIR) 

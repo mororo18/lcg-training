@@ -34,6 +34,7 @@ struct Client {
 
 static const uint32_t CLIENT_UPDATE_RATE = 30;
 static const uint32_t CLIENT_UPDATE_INTERVAL_MS = 1000 / CLIENT_UPDATE_RATE;
+static const int64_t CLIENT_APPROVAL_TIMEOUT_MS = 3000;
 
 void init_client(Client * client, ClientMode mode);
 void run_client(Client * client);

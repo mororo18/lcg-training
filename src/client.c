@@ -65,6 +65,7 @@ void client_signal_handler(int sig){
 static
 PlayerAcceptedEvent wait_for_server_approval(Client * client) {
     // TODO: add timeout
+    int64_t start = millis();
     PacketQueue * client_queue = get_packet_queue(client->info.fd);
     while (true) {
         bool is_fd_ready = is_ready_for_reading(client->info.fd);
@@ -75,6 +76,11 @@ PlayerAcceptedEvent wait_for_server_approval(Client * client) {
                 printf("Player accepted (client id = %u)\n", packet->data.player_accepted.id);
                 return packet->data.player_accepted;
             }
+        }
+
+        if (millis() - start > CLIENT_APPROVAL_TIMEOUT_MS) {
+            printf("Server approval TIMEDOUT(%ldms)\n", CLIENT_APPROVAL_TIMEOUT_MS);
+            exit(0);
         }
     }
 }
