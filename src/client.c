@@ -157,24 +157,17 @@ static void update_client_game_state(Client * client, GameState * state) {
     // Fires a new bullet (boost)
     if (IsMouseButtonDown(MOUSE_LEFT_BUTTON) && client->info.player_info.boost_enabled) {
         if (GetTime() - state->last_bullet_timestamp >= 0.1) {
-            Vector2 aiming_direction = Vector2Subtract(GetMousePosition(), client->info.player_info.position);
-
-            Bullet new_bullet = { .info = { .id = client->bullet_counter, .player_id = client->info.player_id, .position = client->info.player_info.position, }, .direction = Vector2Normalize(aiming_direction) };
-
             state->last_bullet_timestamp = GetTime();
             client->bullet_counter++;
-            push_to_BulletArray(&client->my_bullets, new_bullet);
+            push_to_BulletArray(&client->my_bullets, (Bullet){ .info = { .id = client->bullet_counter, .player_id = client->info.player_id, .position = client->info.player_info.position, }, .direction = Vector2Normalize(Vector2Subtract(GetMousePosition(), client->info.player_info.position)) });
             PlaySound(state->shot_sound);
         }
 
     // Fires a new bullet
     } else if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
-        Vector2 aiming_direction = Vector2Subtract(GetMousePosition(), client->info.player_info.position);
-
-        Bullet new_bullet = { .direction = Vector2Normalize(aiming_direction), .info = { .id = client->bullet_counter, .player_id = client->info.player_id, .position = client->info.player_info.position, } };
 
         client->bullet_counter++;
-        push_to_BulletArray(&client->my_bullets, new_bullet);
+        push_to_BulletArray(&client->my_bullets, (Bullet){ .direction = Vector2Normalize(Vector2Subtract(GetMousePosition(), client->info.player_info.position)), .info = { .id = client->bullet_counter, .player_id = client->info.player_id, .position = client->info.player_info.position, } });
 
         state->last_bullet_timestamp = GetTime();
         client->was_bullet_fired = true;
@@ -219,9 +212,7 @@ static void draw_frame(Client * client, GameState * state) {
 }
 
 static void send_player_position_to_server(PlayerInfo * player_info, int fd) {
-    RequestPlayerInfoUpdate pos_update = { .info = *player_info, };
-    Packet packet = { .type = REQUEST_PLAYER_INFO_UPDATE, .data = { .req_player_info_update = pos_update }, };
-    send_packet(&packet, fd);
+    send_packet(&(Packet){ .type = REQUEST_PLAYER_INFO_UPDATE, .data = { .req_player_info_update = { .info = *player_info, } }, }, fd);
 }
 
 static void send_bullets_update_to_server(BulletArray * bullet_array, int fd) {
@@ -229,8 +220,7 @@ static void send_bullets_update_to_server(BulletArray * bullet_array, int fd) {
 
     for (size_t i = 0; i < bullet_array->lenght; i++) *(BulletInfoArray_at(&bullets_update.info, i)) = BulletArray_at(bullet_array, i)->info;
 
-    Packet packet = { .type = REQUEST_BULLET_INFO_UPDATE, .data = { .req_bullets_info_update = bullets_update, }, };
-    send_packet(&packet, fd);
+    send_packet(&(Packet){ .type = REQUEST_BULLET_INFO_UPDATE, .data = { .req_bullets_info_update = bullets_update, }, }, fd);
 }
 
 void init_client(Client * client, ClientMode mode) {
@@ -278,9 +268,7 @@ void run_client(Client * client) {
 
             if (client->was_bullet_fired) {
                 client->was_bullet_fired = false;
-
-                Packet req = { .type = REQUEST_BULLET_SHOT, };
-                send_packet(&req, client->info.fd);
+                send_packet(&(Packet){ .type = REQUEST_BULLET_SHOT, }, client->info.fd);
             }
         }
 
@@ -294,18 +282,14 @@ void run_client(Client * client) {
             switch (packet->type) {
                 case EVENT_PLAYER_INFO_UPDATE: {
                         //puts("player info update..");
-                        int player_id = packet->data.player_info_update_event.id;
-                        PlayerInfo player_new_info = packet->data.player_info_update_event.info;
                         bool player_found = false;
 
                         for (size_t i = 0; i < state.players.lenght; i++) {
-                            if (player_id == state.players.data[i].id) {
+                            if (packet->data.player_info_update_event.id == state.players.data[i].id) {
 
-                                if (player_new_info.life < state.players.data[i].info.life) {
-                                    PlaySound(state.player_damage_sound);
-                                }
+                                if (packet->data.player_info_update_event.info.life < state.players.data[i].info.life) { PlaySound(state.player_damage_sound); }
 
-                                state.players.data[i].info = player_new_info;
+                                state.players.data[i].info = packet->data.player_info_update_event.info;
                                 player_found = true;
 
                                 break;
@@ -314,39 +298,23 @@ void run_client(Client * client) {
 
                         if (!player_found) {
                             Player new_player = default_Player();
-                            new_player.id = player_id;
-                            new_player.info = player_new_info;
+                            new_player.id = packet->data.player_info_update_event.id;
+                            new_player.info = packet->data.player_info_update_event.info;
                             push_to_PlayerArray(&state.players, new_player);
                         }
 
                         // Update my player info
-                        if (player_id == client->info.player_id) client->info.player_info.life = player_new_info.life;
+                        if (packet->data.player_info_update_event.id == client->info.player_id) client->info.player_info.life = packet->data.player_info_update_event.info.life;
 
                     } break;
                 case EVENT_ENEMIES_POSITION_UPDATE: {
                         state.enemies.lenght = 0;
 
-                        for (size_t i = 0; i < MAX_ENEMIES; i++) {
-                            Vector2 position = packet->data.enemies_position_update.position[i];
-                            Enemy enemy = {
-                                .position = position,
-                            };
-                            push_to_EnemyArray(&state.enemies, enemy);
-                        }
+                        for (size_t i = 0; i < MAX_ENEMIES; i++) { push_to_EnemyArray(&state.enemies, (Enemy){ .position = packet->data.enemies_position_update.position[i], }); }
                     } break;
                 case EVENT_BULLETS_INFO_UPDATE: {
                         state.bullets.lenght = 0;
-                        const size_t info_array_leght = packet->data.bullets_info_update_event.info.lenght;
-                        for (size_t i = 0; i < info_array_leght; i++) {
-                            BulletInfo info = BulletInfoArray_get(&packet->data.bullets_info_update_event.info, i);
-
-                            if (info.player_id != client->info.player_id) {
-                                Bullet bullet = {
-                                    .info = info,
-                                };
-                                push_to_BulletArray(&state.bullets, bullet);
-                            }
-                        }
+                        for (size_t i = 0; i < packet->data.bullets_info_update_event.info.lenght; i++) { if (BulletInfoArray_get(&packet->data.bullets_info_update_event.info, i).player_id != client->info.player_id) { push_to_BulletArray(&state.bullets, (Bullet){ .info = BulletInfoArray_get(&packet->data.bullets_info_update_event.info, i), }); } }
                     } break;
                 case EVENT_DESTROYED_BULLETS: {
                         for (size_t i = 0; i < packet->data.destroyed_bullets.bullets.lenght; i++)
