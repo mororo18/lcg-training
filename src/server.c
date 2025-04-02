@@ -55,10 +55,7 @@ void init_server_socket(Server * server) {
     } else printf("Socket (fd=%d) successfully created..\n", server->sockfd); 
 
     // assign IP, PORT 
-    struct sockaddr_in servaddr = {};
-    servaddr.sin_family = AF_INET; 
-    servaddr.sin_addr.s_addr = inet_addr(SERVER_IP); 
-    servaddr.sin_port = htons(SERVER_PORT);
+    struct sockaddr_in servaddr = { .sin_family = AF_INET, .sin_addr.s_addr = inet_addr(SERVER_IP), .sin_port = htons(SERVER_PORT), };
 
     // Binding newly created socket to given IP and verification 
     if ( bind( server->sockfd, (struct sockaddr *)&servaddr, sizeof(servaddr))) { 
@@ -126,18 +123,14 @@ static void update_server_game_state(Server * server, float elapsed_secs) {
     const Vector2 left  = { .x = -1.0, .y =  0.0 };
 
     // Update score of the player
-    // TODO: check if this can be minimized
     for (size_t client_i = 0; client_i < server->client_info_array.lenght; client_i++) {
         ClientInfo * client = ClientInfoArray_at(&server->client_info_array, client_i);
 
-        if (client->player_info.boost_enabled) {
-            client->player_info.remaining_boost_time -= elapsed_secs;
-
-            if (client->player_info.remaining_boost_time <= 0.0) {
-                client->player_info.remaining_boost_time = 0.0;
-                client->player_info.boost_req_defeats = 0;
-                client->player_info.boost_enabled = false;
-            }
+        client->player_info.remaining_boost_time = ( client->player_info.boost_enabled ? client->player_info.remaining_boost_time - elapsed_secs :  client->player_info.remaining_boost_time);
+        if (client->player_info.boost_enabled && client->player_info.remaining_boost_time <= 0.0) {
+            client->player_info.remaining_boost_time = 0.0;
+            client->player_info.boost_req_defeats = 0;
+            client->player_info.boost_enabled = false;
         }
     }
 
@@ -309,10 +302,8 @@ void run_server(Server * server) {
                 continue;
             }
 
-            PacketQueue * client_queue = get_packet_queue(client->fd);
-            bool is_fd_ready = FD_ISSET(client->fd, &server->readfds);
-            if (pending_packets(client->fd, client_queue, is_fd_ready)) {
-                Packet * client_packet = recieve_packet(client_queue);
+            if (pending_packets(client->fd, get_packet_queue(client->fd), FD_ISSET(client->fd, &server->readfds))) {
+                Packet * client_packet = recieve_packet(get_packet_queue(client->fd));
 
                 //log_packet_type("Server recieved: ", client_packet->type);
                 assert(is_request(client_packet->type) || client_packet->type == PACKET_INVALID);

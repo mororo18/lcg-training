@@ -24,16 +24,12 @@ inline static _Bool is_ready_for_reading(int fd) {
     return is_ready(fd, POLLIN);
 }
 
-static inline
-bool is_fd_valid(int fd) {
-    int flags = fcntl(fd, F_GETFL);
-    return flags != -1;
+static inline bool is_fd_valid(int fd) {
+    return fcntl(fd, F_GETFL) != -1;
 }
 
 
-inline
-static int64_t millis()
-{
+inline static int64_t millis() {
     struct timespec now;
     timespec_get(&now, TIME_UTC);
     return ((int64_t) now.tv_sec) * 1000 + ((int64_t) now.tv_nsec) / 1000000;
@@ -42,8 +38,7 @@ static int64_t millis()
 static struct sigaction sigact = {};
 static void * aux_data = NULL;
 
-static
-void init_signal_handler(void (*handler)(int), void * data){
+static void init_signal_handler(void (*handler)(int), void * data){
     signal(SIGPIPE, SIG_IGN);
     aux_data = data;
     sigact.sa_handler = handler;

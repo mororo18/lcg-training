@@ -22,8 +22,7 @@ static const char * SERVER_IP = "0.0.0.0";
 static const uint32_t SERVER_BROADCAST_FREQ = 10;
 static const uint32_t SERVER_BROADCAST_PERIOD_MS = 1000 / SERVER_BROADCAST_FREQ;
 
-typedef
-struct Server {
+typedef struct Server {
     int sockfd;
     fd_set readfds;
     ClientInfoArray client_info_array;

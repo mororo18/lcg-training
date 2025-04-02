@@ -7,30 +7,26 @@
 #include <unistd.h>
 #include <poll.h>
 
-typedef
-enum ClientMode {
+typedef enum ClientMode {
     CM_SINGLEPAYER,
     CM_MULTIPLAYER,
 } ClientMode;
 
-typedef
-struct ClientInfo {
+typedef struct ClientInfo {
     int fd;
-    int player_id;
+    PlayerId player_id;
     PlayerInfo player_info;
 } ClientInfo;
 
 typedef int ClientId;
 
-typedef
-struct Client {
+typedef struct Client {
     ClientMode mode;
     ClientInfo info;
     BulletArray my_bullets;
     bool was_bullet_fired;
     uint32_t bullet_counter;
 } Client;
-
 
 static const uint32_t CLIENT_UPDATE_RATE = 30;
 static const uint32_t CLIENT_UPDATE_INTERVAL_MS = 1000 / CLIENT_UPDATE_RATE;

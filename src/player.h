@@ -4,10 +4,8 @@
 #include <raylib.h>
 #include <raymath.h>
 #include <stdio.h>
-#include <stdlib.h>
 
-typedef
-struct PlayerInfo {
+typedef struct PlayerInfo {
     Vector2 position;
     int enemies_defeated;
     int boost_req_defeats;
@@ -16,18 +14,13 @@ struct PlayerInfo {
     int life;
 } PlayerInfo;
 
-inline static
-void log_player_info(const PlayerInfo *info) {
-    printf("[PLAYER INFO]\n");
-    printf("    Position: (%.2f, %.2f)\n", info->position.x, info->position.y);
-    printf("    Enemies Defeated: %d\n", info->enemies_defeated);
-    printf("    Life: %d\n", info->life);
+inline static void log_player_info(const PlayerInfo *info) {
+    printf("[PLAYER INFO]\n    Position: (%.2f, %.2f)\n    Enemies Defeated: %d\n    Life: %d\n", info->position.x, info->position.y, info->enemies_defeated, info->life);
 }
 
 typedef int PlayerId;
 
-typedef
-struct Player {
+typedef struct Player {
     PlayerInfo info;
     PlayerId id;
 } Player;
@@ -39,11 +32,6 @@ static const int PLAYER_LIFE = 7;
 static const float PLAYER_VELOCITY = 100.0;
 static const float PLAYER_BOOST_TIME = 5.0; // seconds
 static const int PLAYER_BOOST_REQUIRED_DEFEATS = 7;
-
-static const Rectangle PLAYER_RECT = {
-    .width = 25.0,
-    .height = 25.0,
-};
-
+static const Rectangle PLAYER_RECT = { .width = 25.0, .height = 25.0, };
 
 #endif // _PLAYER_H
