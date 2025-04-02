@@ -83,10 +83,6 @@ static void handle_invalid_client(ClientInfo * client) {
     reset_packet_queue(client->fd);
 }
 
-static void send_player_info_to_client(PlayerInfo * player_info, ClientInfo * src, ClientInfo * dest) {
-    send_packet(&(Packet){ .type = EVENT_PLAYER_INFO_UPDATE, .data = { .player_info_update_event = { .id = src->fd, .info = *player_info, } }, }, dest->fd);
-}
-
 static void send_enemies_position_to_client(EnemyArray * enemy_array, ClientInfo * dest) {
     EnemiesPositionUpdateEvent enemies_position_packet = {};
 
@@ -104,10 +100,6 @@ static void send_bullets_position_to_client(BulletInfoArray * bullets_info, Clie
     send_packet(&(Packet){ .type = EVENT_BULLETS_INFO_UPDATE, .data = { .bullets_info_update_event = bullets_info_packet }, }, dest->fd);
 }
 
-static void send_last_shots_to_client(PlayerIdArray * who_last_shot, ClientInfo * dest) {
-    send_packet(&(Packet){ .type = EVENT_PLAYERS_WHO_SHOT, .data = { .players_who_shot = { *who_last_shot } }, }, dest->fd);
-}
-
 static void send_bullets_destroyed_last_to_client(BulletInfoArray * bullets_last_destroyed, ClientInfo * dest) {
     DestroyedBulletsEvent destroyed_bullets = { .bullets = { .lenght = bullets_last_destroyed->lenght } };
 
@@ -117,11 +109,6 @@ static void send_bullets_destroyed_last_to_client(BulletInfoArray * bullets_last
 }
 
 static void update_server_game_state(Server * server, float elapsed_secs) {
-    const Vector2 up    = { .x =  0.0, .y = -1.0 };
-    const Vector2 down  = { .x =  0.0, .y =  1.0 };
-    const Vector2 right = { .x =  1.0, .y =  0.0 };
-    const Vector2 left  = { .x = -1.0, .y =  0.0 };
-
     // Update score of the player
     for (size_t client_i = 0; client_i < server->client_info_array.lenght; client_i++) {
         ClientInfo * client = ClientInfoArray_at(&server->client_info_array, client_i);
@@ -214,7 +201,7 @@ static void update_server_game_state(Server * server, float elapsed_secs) {
 
     // Spawn enemies
     if (server->enemies.lenght < MAX_ENEMIES) {
-        const Vector2 possible_directions[] = { up, Vector2Add(up, right), right, Vector2Add(right, down), down, Vector2Add(down, left), left, Vector2Add(left, up), };
+        const Vector2 possible_directions[] = { WIN_UP, Vector2Add(WIN_UP, WIN_RIGHT), WIN_RIGHT, Vector2Add(WIN_RIGHT, WIN_DOWN), WIN_DOWN, Vector2Add(WIN_DOWN, WIN_LEFT), WIN_LEFT, Vector2Add(WIN_LEFT, WIN_UP), };
         const size_t new_enemies = MAX_ENEMIES - server->enemies.lenght;
         for (int i = 0; i < (int) new_enemies; i++) push_to_EnemyArray(&server->enemies, (Enemy){ .position = (Vector2) { .x = (float) (rand() % WINDOW_WIDTH), .y = (float) (rand() % WINDOW_HEIGHT), }, .direction = Vector2Normalize(possible_directions[rand() % (int)(sizeof(possible_directions) / sizeof(Vector2))]), });
     }
@@ -340,7 +327,7 @@ void run_server(Server * server) {
                 if (!is_ready_for_writing(dest->fd)) continue;
 
                 // Send player's info to client_info_array
-                for (ssize_t index = 0; index < (ssize_t) server->client_info_array.lenght; index++) send_player_info_to_client(&ClientInfoArray_at(&server->client_info_array, (size_t) index)->player_info, ClientInfoArray_at(&server->client_info_array, (size_t) index), dest);
+                for (ssize_t index = 0; index < (ssize_t) server->client_info_array.lenght; index++) send_packet(&(Packet){ .type = EVENT_PLAYER_INFO_UPDATE, .data = { .player_info_update_event = { .id = ClientInfoArray_at(&server->client_info_array, (size_t) index)->fd, .info = ClientInfoArray_at(&server->client_info_array, (size_t) index)->player_info, } }, }, dest->fd);
                 
                 // Send enemies' info to clients
                 send_enemies_position_to_client(&server->enemies, dest);
@@ -351,7 +338,7 @@ void run_server(Server * server) {
                 // Tell if some enemy was killed
                 if (server->was_some_enemy_killed) send_packet(&(Packet){ .type = EVENT_ENEMY_KILLED, }, dest->fd);
 
-                if (server->who_last_shot.lenght > 0) send_last_shots_to_client(&server->who_last_shot, dest);
+                if (server->who_last_shot.lenght > 0) send_packet(&(Packet){ .type = EVENT_PLAYERS_WHO_SHOT, .data = { .players_who_shot = { server->who_last_shot } }, }, dest->fd);
 
                 if (server->bullets_destroyed_last.lenght > 0) send_bullets_destroyed_last_to_client(&server->bullets_destroyed_last, dest);
 

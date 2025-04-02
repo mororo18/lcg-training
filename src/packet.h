@@ -18,37 +18,27 @@
 
 typedef enum  __attribute__ ((__packed__)) PacketType { REQUEST_PLAYER_INFO_UPDATE, REQUEST_BULLET_INFO_UPDATE, REQUEST_BULLET_SHOT, REQUEST_EMPTY, EVENT_EMPTY, EVENT_PLAYER_ACCEPTED, EVENT_PLAYER_REFUSED, EVENT_PLAYER_ENABLE_BOOST, EVENT_PLAYER_DISABLE_BOOST, EVENT_PLAYER_INFO_UPDATE, EVENT_PLAYERS_WHO_SHOT, EVENT_ENEMIES_POSITION_UPDATE, EVENT_ENEMY_KILLED, EVENT_BULLETS_INFO_UPDATE, EVENT_DESTROYED_BULLETS, EVENT_TYPE_RANGE, PACKET_INVALID, } PacketType;
 
-static inline bool is_event(PacketType type) {
-    return (type >= EVENT_EMPTY && type < EVENT_TYPE_RANGE);
-}
+static inline bool is_event(PacketType type) { return (type >= EVENT_EMPTY && type < EVENT_TYPE_RANGE); }
 
-static inline bool is_request(PacketType type) {
-    return (type >= REQUEST_PLAYER_INFO_UPDATE && type <= REQUEST_EMPTY);
-}
+static inline bool is_request(PacketType type) { return (type >= REQUEST_PLAYER_INFO_UPDATE && type <= REQUEST_EMPTY); }
 
-typedef struct RequestBulletsInfoUpdate {
-    BulletInfoArray info;
-} RequestBulletsInfoUpdate;
+typedef struct RequestBulletsInfoUpdate { BulletInfoArray info; }
+RequestBulletsInfoUpdate;
 
-typedef struct RequestPlayerInfoUpdate {
-    PlayerInfo info;
-} RequestPlayerInfoUpdate;
+typedef struct RequestPlayerInfoUpdate { PlayerInfo info; }
+RequestPlayerInfoUpdate;
 
-typedef struct DestroyedBulletsEvent {
-    BulletInfoArray bullets;
-} DestroyedBulletsEvent;
+typedef struct DestroyedBulletsEvent { BulletInfoArray bullets; }
+DestroyedBulletsEvent;
 
-typedef struct PlayersWhoShotEvent {
-    PlayerIdArray who_shot;
-} PlayersWhoShotEvent;
+typedef struct PlayersWhoShotEvent { PlayerIdArray who_shot; }
+PlayersWhoShotEvent;
 
-typedef struct EnemiesPositionUpdateEvent {
-    Vector2 position[MAX_ENEMIES];
-} EnemiesPositionUpdateEvent;
+typedef struct EnemiesPositionUpdateEvent { Vector2 position[MAX_ENEMIES]; }
+EnemiesPositionUpdateEvent;
 
-typedef struct BulletsInfoUpdateEvent {
-    BulletInfoArray info;
-} BulletsInfoUpdateEvent;
+typedef struct BulletsInfoUpdateEvent { BulletInfoArray info; }
+BulletsInfoUpdateEvent;
 
 typedef struct PlayerInfoUpdateEvent {
     int id;
@@ -109,10 +99,8 @@ static bool packet_data_is_array(PacketType type) {
         case REQUEST_BULLET_INFO_UPDATE:
         case EVENT_PLAYERS_WHO_SHOT:
         case EVENT_BULLETS_INFO_UPDATE:
-        case EVENT_DESTROYED_BULLETS:
-            return true;
-        default:
-            return false;
+        case EVENT_DESTROYED_BULLETS: return true;
+        default: return false;
     }
 }
 
@@ -138,9 +126,11 @@ static const char *packet_type_to_string(PacketType type) {
     }
 }
 
+/*
 static inline void log_packet_type(const char *prefix, PacketType type) {
     printf("[%s] Packet Type: %s (%d)\n", prefix, packet_type_to_string(type), type);
 }
+*/
 
 #define PACKET_QUEUE_CAPACITY PACKET_SIZE
 typedef struct {
@@ -178,10 +168,6 @@ static Packet * packet_queue_pop(PacketQueue *packet_queue) {
     return packet_queue->buffer + packet_queue->tail;
 }
 
-static bool packet_queue_is_empty(const PacketQueue * packet_queue) {
-    return packet_queue->count == 0;
-}
-
 static PacketQueue packet_queues[MAX_PLAYERS] = {};
 static const size_t packet_queues_lenght = sizeof(packet_queues) / sizeof(PacketQueue);
 
@@ -204,7 +190,6 @@ static inline void assign_packet_queue_to_client(int fd) {
 static inline void reset_packet_queue(int fd) {
     assert(fd > 0);
     for (size_t i = 0; i < packet_queues_lenght; i++) if (packet_queues[i].client_fd == fd) { packet_queues[i] = (PacketQueue) { .client_fd = -1 }; }
-    assert(false);
 }
 
 static inline PacketQueue * get_packet_queue(int fd) {
@@ -213,9 +198,11 @@ static inline PacketQueue * get_packet_queue(int fd) {
     assert(false);
 }
 
+/*
 static inline void assert_buffer_fitness(char * ptr, size_t size, char * buff, size_t buff_size) {
     assert(buff <= ptr && ptr + size <= buff + buff_size);
 }
+*/
 
 static void write_to_buffer(char **ptr, const void *data, size_t size) {
     memcpy(*ptr, data, size);
@@ -309,8 +296,7 @@ static size_t read_packet_from_buffer(Packet * packet, char * buff, size_t buff_
                     array_lenght_ptr = &packet->data.destroyed_bullets.bullets.lenght;
                     element_size = sizeof(BulletInfo);
                 } break;
-            default:
-                assert(false);
+            default: assert(false);
         }
 
         size_t actual_array_len = *((size_t*) ptr);
@@ -378,7 +364,7 @@ static void send_packet(const Packet * packet, int fd) {
 
 static bool pending_packets(int fd, PacketQueue * pqueue, bool fd_ready_for_reading) {
 
-    if (packet_queue_is_empty(pqueue) && fd_ready_for_reading) {
+    if (pqueue->count == 0 && fd_ready_for_reading) {
 
         ssize_t ret = 0;
         while (true) {
@@ -424,11 +410,9 @@ static bool pending_packets(int fd, PacketQueue * pqueue, bool fd_ready_for_read
         }
     }
 
-    return !packet_queue_is_empty(pqueue);
+    return !(pqueue->count == 0);
 }
 
-static Packet * recieve_packet(PacketQueue * pqueue) {
-    return packet_queue_dequeue(pqueue);
-}
+static Packet * recieve_packet(PacketQueue * pqueue) { return packet_queue_dequeue(pqueue); }
 
 #endif // __PACKET_H_

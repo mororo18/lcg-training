@@ -118,12 +118,6 @@ static void connect_client_to_server(Client * client, GameState * state) {
 
 static void update_client_game_state(Client * client, GameState * state) {
 
-    // TODO: put this in window.h
-    const Vector2 up    = { .x =  0.0, .y = -1.0 };
-    const Vector2 down  = { .x =  0.0, .y =  1.0 };
-    const Vector2 right = { .x =  1.0, .y =  0.0 };
-    const Vector2 left  = { .x = -1.0, .y =  0.0 };
-
     if (client->info.player_info.life <= 0) {
         state->game_over = true;
         client->my_bullets.lenght = 0;
@@ -132,13 +126,13 @@ static void update_client_game_state(Client * client, GameState * state) {
 
     Vector2 player_movement_direction = Vector2Zero();
 
-    if (IsKeyDown(KEY_W)) player_movement_direction = Vector2Add(player_movement_direction, up);
+    if (IsKeyDown(KEY_W)) player_movement_direction = Vector2Add(player_movement_direction, WIN_UP);
 
-    if (IsKeyDown(KEY_D)) player_movement_direction = Vector2Add(player_movement_direction, right);
+    if (IsKeyDown(KEY_D)) player_movement_direction = Vector2Add(player_movement_direction, WIN_RIGHT);
 
-    if (IsKeyDown(KEY_A)) player_movement_direction = Vector2Add(player_movement_direction, left);
+    if (IsKeyDown(KEY_A)) player_movement_direction = Vector2Add(player_movement_direction, WIN_LEFT);
 
-    if (IsKeyDown(KEY_S)) player_movement_direction = Vector2Add(player_movement_direction, down);
+    if (IsKeyDown(KEY_S)) player_movement_direction = Vector2Add(player_movement_direction, WIN_DOWN);
 
     player_movement_direction = Vector2Scale(Vector2Normalize(player_movement_direction), PLAYER_VELOCITY * state->dt);
 
