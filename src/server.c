@@ -28,19 +28,16 @@
 
 static void server_signal_handler(int sig){
     if (sig == SIGINT && ((Server*)aux_data)->sockfd != -1) {
-        printf("Shutting down...\n");
+        //printf("Shutting down...\n");
         close(((Server*)aux_data)->sockfd);
 
-        for (size_t i = 0; i < ((Server*)aux_data)->client_info_array.lenght; i++) {
-            ClientInfo * client = ClientInfoArray_at(&((Server*)aux_data)->client_info_array, i);
-            close(client->fd);
-        }
+        for (size_t i = 0; i < ((Server*)aux_data)->client_info_array.lenght; i++) { close(ClientInfoArray_at(&((Server*)aux_data)->client_info_array, i)->fd); }
         exit(0);
     }
 }
 
 static void refuse_connection(ClientInfo * new_client) {
-    printf("Refusing connection...\n");
+    //printf("Refusing connection...\n");
     send_packet(&(Packet) {.type=EVENT_PLAYER_REFUSED}, new_client->fd);
     close(new_client->fd);
 }
@@ -49,24 +46,18 @@ void init_server_socket(Server * server) {
     init_signal_handler(server_signal_handler, server);
     // socket create and verification 
     server->sockfd = socket(AF_INET, SOCK_STREAM, 0); 
-    if (server->sockfd == -1) { 
-        printf("socket creation failed...\n"); 
-        exit(0); 
-    } else printf("Socket (fd=%d) successfully created..\n", server->sockfd); 
+    if (server->sockfd == -1) { exit(0); } // else printf("Socket (fd=%d) successfully created..\n", server->sockfd); 
+        // printf("socket creation failed...\n"); 
 
     // assign IP, PORT 
     struct sockaddr_in servaddr = { .sin_family = AF_INET, .sin_addr.s_addr = inet_addr(SERVER_IP), .sin_port = htons(SERVER_PORT), };
 
     // Binding newly created socket to given IP and verification 
-    if ( bind( server->sockfd, (struct sockaddr *)&servaddr, sizeof(servaddr))) { 
-        printf("socket bind failed...\n"); 
-        exit(0); 
-    } else printf("Socket successfully binded..\n");
+    if ( bind( server->sockfd, (struct sockaddr *)&servaddr, sizeof(servaddr))) { exit(0); } // else printf("Socket successfully binded..\n");
+        // printf("socket bind failed...\n"); 
 
-    if (listen(server->sockfd, 10)) {
-        printf("Listen failed...\n"); 
-        exit(0);
-    } else printf("Server listening..\n");
+    if (listen(server->sockfd, 10)) { exit(0); } // else printf("Server listening..\n");
+        // printf("Listen failed...\n"); 
 
     init_packet_queues();
 
@@ -78,15 +69,14 @@ void init_server(Server * server) {
 }
 
 static void handle_invalid_client(ClientInfo * client) {
-    assert(!is_fd_valid(client->fd));
-    printf("Client (fd=%d) removed!\n", client->fd);
+    //assert(!is_fd_valid(client->fd));
     reset_packet_queue(client->fd);
 }
 
 static void send_enemies_position_to_client(EnemyArray * enemy_array, ClientInfo * dest) {
     EnemiesPositionUpdateEvent enemies_position_packet = {};
 
-    assert(sizeof(enemies_position_packet.position) / sizeof(enemies_position_packet.position[0]) == enemy_array->lenght);
+    //assert(sizeof(enemies_position_packet.position) / sizeof(enemies_position_packet.position[0]) == enemy_array->lenght);
     for (size_t i = 0; i < enemy_array->lenght; i++) enemies_position_packet.position[i] = EnemyArray_get(enemy_array, i).position;
 
     send_packet(&(Packet){ .type = EVENT_ENEMIES_POSITION_UPDATE, .data = { .enemies_position_update = enemies_position_packet }, }, dest->fd);
@@ -109,15 +99,14 @@ static void send_bullets_destroyed_last_to_client(BulletInfoArray * bullets_last
 }
 
 static void update_server_game_state(Server * server, float elapsed_secs) {
-    // Update score of the player
     for (size_t client_i = 0; client_i < server->client_info_array.lenght; client_i++) {
-        ClientInfo * client = ClientInfoArray_at(&server->client_info_array, client_i);
+        //ClientInfo * client = ClientInfoArray_at(&server->client_info_array, client_i);
 
-        client->player_info.remaining_boost_time = ( client->player_info.boost_enabled ? client->player_info.remaining_boost_time - elapsed_secs :  client->player_info.remaining_boost_time);
-        if (client->player_info.boost_enabled && client->player_info.remaining_boost_time <= 0.0) {
-            client->player_info.remaining_boost_time = 0.0;
-            client->player_info.boost_req_defeats = 0;
-            client->player_info.boost_enabled = false;
+        ClientInfoArray_at(&server->client_info_array, client_i)->player_info.remaining_boost_time = ( ClientInfoArray_at(&server->client_info_array, client_i)->player_info.boost_enabled ? ClientInfoArray_at(&server->client_info_array, client_i)->player_info.remaining_boost_time - elapsed_secs :  ClientInfoArray_at(&server->client_info_array, client_i)->player_info.remaining_boost_time);
+        if (ClientInfoArray_at(&server->client_info_array, client_i)->player_info.boost_enabled && ClientInfoArray_at(&server->client_info_array, client_i)->player_info.remaining_boost_time <= 0.0) {
+            ClientInfoArray_at(&server->client_info_array, client_i)->player_info.remaining_boost_time = 0.0;
+            ClientInfoArray_at(&server->client_info_array, client_i)->player_info.boost_req_defeats = 0;
+            ClientInfoArray_at(&server->client_info_array, client_i)->player_info.boost_enabled = false;
         }
     }
 
@@ -139,17 +128,17 @@ static void update_server_game_state(Server * server, float elapsed_secs) {
 
                 // Update score of the player
                 for (size_t client_i = 0; client_i < server->client_info_array.lenght; client_i++) {
-                    ClientInfo * client = ClientInfoArray_at(&server->client_info_array, client_i);
-                    if (client->fd == bullet.player_id) {
-                        client->player_info.enemies_defeated++;
+                    //ClientInfo * client = ClientInfoArray_at(&server->client_info_array, client_i);
+                    if (ClientInfoArray_at(&server->client_info_array, client_i)->fd == bullet.player_id) {
+                        ClientInfoArray_at(&server->client_info_array, client_i)->player_info.enemies_defeated++;
                         
                         // Update total enemies defeated only in normal mode
-                        if (!client->player_info.boost_enabled) client->player_info.boost_req_defeats++;
+                        if (!ClientInfoArray_at(&server->client_info_array, client_i)->player_info.boost_enabled) ClientInfoArray_at(&server->client_info_array, client_i)->player_info.boost_req_defeats++;
 
                         // Check for player boost condition
-                        if (client->player_info.boost_req_defeats >= PLAYER_BOOST_REQUIRED_DEFEATS && !client->player_info.boost_enabled) {
-                            client->player_info.boost_enabled = true;
-                            client->player_info.remaining_boost_time = PLAYER_BOOST_TIME;
+                        if (ClientInfoArray_at(&server->client_info_array, client_i)->player_info.boost_req_defeats >= PLAYER_BOOST_REQUIRED_DEFEATS && !ClientInfoArray_at(&server->client_info_array, client_i)->player_info.boost_enabled) {
+                            ClientInfoArray_at(&server->client_info_array, client_i)->player_info.boost_enabled = true;
+                            ClientInfoArray_at(&server->client_info_array, client_i)->player_info.remaining_boost_time = PLAYER_BOOST_TIME;
                         }
 
                         break;
@@ -231,50 +220,37 @@ void run_server(Server * server) {
         // Add client sockets to set
         int max_fd = server->sockfd;
         for (size_t i = 0; i < server->client_info_array.lenght; i++) {
-            ClientInfo * client = ClientInfoArray_at(&server->client_info_array, i);
 
-            if (!is_fd_valid(client->fd)) {
-                handle_invalid_client(client);
+            if (!is_fd_valid(ClientInfoArray_at(&server->client_info_array, i)->fd)) {
+                handle_invalid_client(ClientInfoArray_at(&server->client_info_array, i));
                 remove_from_ClientInfoArray(&server->client_info_array, i--);
                 continue;
             }
 
-            if (client->fd > 0) FD_SET(client->fd, &server->readfds);
+            if (ClientInfoArray_at(&server->client_info_array, i)->fd > 0) FD_SET(ClientInfoArray_at(&server->client_info_array, i)->fd, &server->readfds);
 
-            if (client->fd > max_fd) max_fd = client->fd;
+            if (ClientInfoArray_at(&server->client_info_array, i)->fd > max_fd) max_fd = ClientInfoArray_at(&server->client_info_array, i)->fd;
         }
 
         // Wait for an activity
-        int activity = select(max_fd + 1, &server->readfds, NULL, NULL, NULL);
-        if (activity < 0) {
-            perror("Select error");
-            continue;
-        }
+        if (select(max_fd + 1, &server->readfds, NULL, NULL, NULL) < 0) { continue; }
 
         // New connection
         if (FD_ISSET(server->sockfd, &server->readfds)) {
 
-            struct sockaddr_in  address = {}; 
-            socklen_t addrlen = sizeof(address);
+            int new_socket = accept(server->sockfd, NULL, NULL);
 
-            int new_socket = accept(server->sockfd, (struct sockaddr*)&address, &addrlen);
+            if (new_socket < 0) { continue; }
 
-            if (new_socket < 0) {
-                perror("Accept error");
-                continue;
-            }
+            //printf("New connection: socket %d\n", new_socket);
 
-            printf("New connection: socket %d\n", new_socket);
-
-            ClientInfo new_client = { .fd = new_socket, .player_info = default_PlayerInfo(), };
-
-            if (server->client_info_array.lenght + 1 > MAX_CLIENTS) refuse_connection(&new_client);
+            if (server->client_info_array.lenght + 1 > MAX_CLIENTS) refuse_connection(&(ClientInfo){ .fd = new_socket, .player_info = default_PlayerInfo(), });
             else {
-                assign_packet_queue_to_client(new_client.fd);
-                push_to_ClientInfoArray(&server->client_info_array, new_client);
+                assign_packet_queue_to_client(new_socket);
+                push_to_ClientInfoArray(&server->client_info_array, (ClientInfo){ .fd = new_socket, .player_info = default_PlayerInfo(), });
                 // Sends the new_client.fd to the client.
                 // The fd is used as the id of a player.
-                send_packet(&(Packet){ .type = EVENT_PLAYER_ACCEPTED, .data =  { .player_accepted = { .id = new_client.fd, .info = new_client.player_info, } }, }, new_client.fd);
+                send_packet(&(Packet){ .type = EVENT_PLAYER_ACCEPTED, .data =  { .player_accepted = { .id = new_socket, .info = default_PlayerInfo(), } }, }, new_socket);
             }
         }
 
@@ -293,7 +269,7 @@ void run_server(Server * server) {
                 Packet * client_packet = recieve_packet(get_packet_queue(client->fd));
 
                 //log_packet_type("Server recieved: ", client_packet->type);
-                assert(is_request(client_packet->type) || client_packet->type == PACKET_INVALID);
+                //assert(is_request(client_packet->type) || client_packet->type == PACKET_INVALID);
                 switch (client_packet->type) {
                     case REQUEST_PLAYER_INFO_UPDATE: client->player_info.position = client_packet->data.req_player_info_update.info.position;
                         break;
@@ -302,7 +278,7 @@ void run_server(Server * server) {
                     case REQUEST_BULLET_SHOT: push_to_PlayerIdArray(&server->who_last_shot, client->fd);
                         break;
                     case REQUEST_EMPTY: {
-                            printf("Client disconnected: socket %d\n", client->fd);
+                            //printf("Client disconnected: socket %d\n", client->fd);
                             close(client->fd);
                             reset_packet_queue(client->fd);
                             remove_from_ClientInfoArray(&server->client_info_array, (size_t) i--);
@@ -316,33 +292,31 @@ void run_server(Server * server) {
 
         int64_t elapsed = millis() - start;
         if (elapsed > SERVER_BROADCAST_PERIOD_MS) {
-            float elapsed_secs = (float) ((double) elapsed / 1000.0);
             // update global game state
-            update_server_game_state(server, elapsed_secs);
+            update_server_game_state(server, (float) ((double) elapsed / 1000.0));
             start = millis();
 
             for (ssize_t i = 0; i < (ssize_t) server->client_info_array.lenght; i++) {
-                ClientInfo * dest = ClientInfoArray_at(&server->client_info_array, (size_t) i);
 
-                if (!is_ready_for_writing(dest->fd)) continue;
+                if (!is_ready_for_writing(ClientInfoArray_at(&server->client_info_array, (size_t) i)->fd)) continue;
 
                 // Send player's info to client_info_array
-                for (ssize_t index = 0; index < (ssize_t) server->client_info_array.lenght; index++) send_packet(&(Packet){ .type = EVENT_PLAYER_INFO_UPDATE, .data = { .player_info_update_event = { .id = ClientInfoArray_at(&server->client_info_array, (size_t) index)->fd, .info = ClientInfoArray_at(&server->client_info_array, (size_t) index)->player_info, } }, }, dest->fd);
+                for (ssize_t index = 0; index < (ssize_t) server->client_info_array.lenght; index++) send_packet(&(Packet){ .type = EVENT_PLAYER_INFO_UPDATE, .data = { .player_info_update_event = { .id = ClientInfoArray_at(&server->client_info_array, (size_t) index)->fd, .info = ClientInfoArray_at(&server->client_info_array, (size_t) index)->player_info, } }, }, ClientInfoArray_at(&server->client_info_array, (size_t) i)->fd);
                 
                 // Send enemies' info to clients
-                send_enemies_position_to_client(&server->enemies, dest);
+                send_enemies_position_to_client(&server->enemies, ClientInfoArray_at(&server->client_info_array, (size_t) i));
 
                 // Send the position of the bullets to clients
-                send_bullets_position_to_client(&server->bullets_info, dest);
+                send_bullets_position_to_client(&server->bullets_info, ClientInfoArray_at(&server->client_info_array, (size_t) i));
 
                 // Tell if some enemy was killed
-                if (server->was_some_enemy_killed) send_packet(&(Packet){ .type = EVENT_ENEMY_KILLED, }, dest->fd);
+                if (server->was_some_enemy_killed) send_packet(&(Packet){ .type = EVENT_ENEMY_KILLED, }, ClientInfoArray_at(&server->client_info_array, (size_t) i)->fd);
 
-                if (server->who_last_shot.lenght > 0) send_packet(&(Packet){ .type = EVENT_PLAYERS_WHO_SHOT, .data = { .players_who_shot = { server->who_last_shot } }, }, dest->fd);
+                if (server->who_last_shot.lenght > 0) send_packet(&(Packet){ .type = EVENT_PLAYERS_WHO_SHOT, .data = { .players_who_shot = { server->who_last_shot } }, }, ClientInfoArray_at(&server->client_info_array, (size_t) i)->fd);
 
-                if (server->bullets_destroyed_last.lenght > 0) send_bullets_destroyed_last_to_client(&server->bullets_destroyed_last, dest);
+                if (server->bullets_destroyed_last.lenght > 0) send_bullets_destroyed_last_to_client(&server->bullets_destroyed_last, ClientInfoArray_at(&server->client_info_array, (size_t) i));
 
-                send_packet(&(Packet){ .type = dest->player_info.boost_enabled ? EVENT_PLAYER_ENABLE_BOOST : EVENT_PLAYER_DISABLE_BOOST}, dest->fd);
+                send_packet(&(Packet){ .type = ClientInfoArray_at(&server->client_info_array, (size_t) i)->player_info.boost_enabled ? EVENT_PLAYER_ENABLE_BOOST : EVENT_PLAYER_DISABLE_BOOST}, ClientInfoArray_at(&server->client_info_array, (size_t) i)->fd);
             }
 
             // Reset after broadcast

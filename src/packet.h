@@ -104,6 +104,7 @@ static bool packet_data_is_array(PacketType type) {
     }
 }
 
+/*
 static const char *packet_type_to_string(PacketType type) {
     switch (type) {
         case REQUEST_PLAYER_INFO_UPDATE: return "REQUEST_PLAYER_INFO_UPDATE";
@@ -126,7 +127,6 @@ static const char *packet_type_to_string(PacketType type) {
     }
 }
 
-/*
 static inline void log_packet_type(const char *prefix, PacketType type) {
     printf("[%s] Packet Type: %s (%d)\n", prefix, packet_type_to_string(type), type);
 }
@@ -144,7 +144,7 @@ typedef struct {
 } PacketQueue;
 
 static Packet * packet_queue_enqueue(PacketQueue * packet_queue) {
-    if (packet_queue->count == PACKET_QUEUE_CAPACITY) { assert(false); }
+    //if (packet_queue->count == PACKET_QUEUE_CAPACITY) { assert(false); }
     Packet * ret = packet_queue->buffer + packet_queue->tail;
     packet_queue->tail = (packet_queue->tail + 1) % PACKET_QUEUE_CAPACITY;
     packet_queue->count++;
@@ -152,7 +152,7 @@ static Packet * packet_queue_enqueue(PacketQueue * packet_queue) {
 }
 
 static Packet * packet_queue_dequeue(PacketQueue * packet_queue) {
-    if (packet_queue->count == 0) { assert(false); }  // Fila vazia
+    // if (packet_queue->count == 0) { assert(false); }  // Fila vazia
     Packet * ret = packet_queue->buffer + packet_queue->head;
     packet_queue->head = (packet_queue->head + 1) % PACKET_QUEUE_CAPACITY;
     packet_queue->count--;
@@ -171,12 +171,10 @@ static Packet * packet_queue_pop(PacketQueue *packet_queue) {
 static PacketQueue packet_queues[MAX_PLAYERS] = {};
 static const size_t packet_queues_lenght = sizeof(packet_queues) / sizeof(PacketQueue);
 
-static inline void init_packet_queues() {
-    for (size_t i = 0; i < packet_queues_lenght; i++) { packet_queues[i] = (PacketQueue) { .client_fd = -1 }; }
-}
+static inline void init_packet_queues() { for (size_t i = 0; i < packet_queues_lenght; i++) { packet_queues[i] = (PacketQueue) { .client_fd = -1 }; } }
 
 static inline void assign_packet_queue_to_client(int fd) {
-    assert(fd > 0);
+    ///assert(fd > 0);
     for (size_t i = 0; i < packet_queues_lenght; i++) {
         if (packet_queues[i].client_fd == -1) {
             packet_queues[i].client_fd = fd;
@@ -184,19 +182,15 @@ static inline void assign_packet_queue_to_client(int fd) {
         }
     }
 
-    assert(false);
+    //assert(false);
 }
 
-static inline void reset_packet_queue(int fd) {
-    assert(fd > 0);
-    for (size_t i = 0; i < packet_queues_lenght; i++) if (packet_queues[i].client_fd == fd) { packet_queues[i] = (PacketQueue) { .client_fd = -1 }; }
-}
+    //assert(fd > 0);
+static inline void reset_packet_queue(int fd) { for (size_t i = 0; i < packet_queues_lenght; i++) if (packet_queues[i].client_fd == fd) { packet_queues[i] = (PacketQueue) { .client_fd = -1 }; } }
 
-static inline PacketQueue * get_packet_queue(int fd) {
-    assert(fd > 0);
-    for (size_t i = 0; i < packet_queues_lenght; i++) if (packet_queues[i].client_fd == fd) return packet_queues + i;
-    assert(false);
-}
+    //assert(false);
+    //assert(fd > 0);
+static inline PacketQueue * get_packet_queue(int fd) { for (size_t i = 0; i < packet_queues_lenght; i++) if (packet_queues[i].client_fd == fd) return packet_queues + i; }
 
 /*
 static inline void assert_buffer_fitness(char * ptr, size_t size, char * buff, size_t buff_size) {
@@ -225,7 +219,7 @@ static void read_array_from_buffer(char **ptr, void *array, size_t element_size,
 }
 
 static size_t write_packet_to_buffer(const Packet * packet, char *buff, size_t buff_size) {
-    assert(buff_size >= PACKET_SIZE);
+    //assert(buff_size >= PACKET_SIZE);
     char * ptr = buff;
     write_to_buffer(&ptr, &packet->type, sizeof(PacketType));
 
@@ -246,24 +240,20 @@ static size_t write_packet_to_buffer(const Packet * packet, char *buff, size_t b
             break;
         case EVENT_DESTROYED_BULLETS: write_array_to_buffer( &ptr, packet->data.destroyed_bullets.bullets.data, sizeof(BulletInfo), packet->data.destroyed_bullets.bullets.lenght);
             break;
-        default:
-            break;
+        default: break;
     }
 
-    assert((size_t)(ptr - buff) <= PACKET_SIZE);
+    //assert((size_t)(ptr - buff) <= PACKET_SIZE);
     return (size_t)(ptr - buff);
 }
 
 static size_t read_packet_from_buffer(Packet * packet, char * buff, size_t buff_size) {
-    char * const src = buff;
-    char * ptr = src;
+    char * ptr = buff;
 
     // Check if there is enough data to read the EvenType
     if (buff_size < sizeof(PacketType)) return 0;
 
-    PacketType packet_type = *((PacketType*) ptr);
-
-    if (packet_data_is_array(packet_type)) {
+    if (packet_data_is_array(*((PacketType*) ptr))) {
 
         // Verifica se há espaço para ler o tamanho do array
         if ((size_t)(ptr - buff) + sizeof(size_t) > buff_size) return 0;
@@ -275,7 +265,7 @@ static size_t read_packet_from_buffer(Packet * packet, char * buff, size_t buff_
         size_t * array_lenght_ptr = NULL;
 
         // TODO: minimize this
-        switch (packet_type) {
+        switch (packet->type) {
             case REQUEST_BULLET_INFO_UPDATE: {
                     array_ptr = packet->data.req_bullets_info_update.info.data;
                     array_lenght_ptr = &packet->data.req_bullets_info_update.info.lenght;
@@ -299,17 +289,14 @@ static size_t read_packet_from_buffer(Packet * packet, char * buff, size_t buff_
             default: assert(false);
         }
 
-        size_t actual_array_len = *((size_t*) ptr);
-
         // Verifica se há espaço suficiente para os elementos do array
-        if ((size_t)(ptr - buff) + (actual_array_len * element_size) > buff_size) return 0;
+        if ((size_t)(ptr - buff) + (*((size_t*) ptr) * element_size) > buff_size) return 0;
 
         read_array_from_buffer( &ptr, array_ptr, element_size, array_lenght_ptr);
 
     } else {
-        size_t packet_size = get_packet_data_size(packet_type);
         // Check if there is enough data to read the PacketData
-        if (buff_size < sizeof(PacketType) + packet_size) { return 0; }
+        if (buff_size < sizeof(PacketType) + get_packet_data_size(*((PacketType*) ptr))) { return 0; }
 
         read_from_buffer(&ptr, &packet->type, sizeof(PacketType));
 
@@ -322,19 +309,18 @@ static size_t read_packet_from_buffer(Packet * packet, char * buff, size_t buff_
                 break;
             case EVENT_ENEMIES_POSITION_UPDATE: read_from_buffer(&ptr, &packet->data.enemies_position_update, sizeof(EnemiesPositionUpdateEvent));
                 break;
-            default:
-                break;
+            default: break;
         }
     }
 
-    assert((uint64_t)(ptr - src) <= PACKET_SIZE);
-    return (size_t)(ptr - src);
+    //assert((uint64_t)(ptr - buff) <= PACKET_SIZE);
+    return (size_t)(ptr - buff);
 }
 
 static void send_packet(const Packet * packet, int fd) {
     char buff[PACKET_SIZE] = {};
     size_t bytes_count = write_packet_to_buffer(packet, (char*)&buff, sizeof(buff));
-    assert(bytes_count <= sizeof(buff));
+    //assert(bytes_count <= sizeof(buff));
 
     char * buff_ptr = buff;
     while (bytes_count > 0) {
@@ -354,7 +340,7 @@ static void send_packet(const Packet * packet, int fd) {
                 default: printf("Erro: %s\n", strerror(errno));
             };
 
-            printf("erron=%u\n", errno);
+            //printf("erron=%u\n", errno);
         }
 
         bytes_count -= (size_t) ret;
@@ -373,28 +359,21 @@ static bool pending_packets(int fd, PacketQueue * pqueue, bool fd_ready_for_read
             if (ret >= 0) { break; }
 
 
-            if (errno == EINTR) {
-                puts("EINTR");
-                continue;  // try again
-            }
+                //puts("EINTR");
+            if (errno == EINTR) { continue;  /* try again*/ }
 
-            if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                puts("EAGAIN || EWOULDBLOCK");
-                assert(false);
-            }
+                //puts("EAGAIN || EWOULDBLOCK");
+            // if (errno == EAGAIN || errno == EWOULDBLOCK) { assert(false); }
 
             // Critical error
-            Packet * empty_packet = packet_queue_enqueue(pqueue);
-            empty_packet->type = PACKET_INVALID;
+            packet_queue_enqueue(pqueue)->type = PACKET_INVALID;
         }
 
         if (ret != -1) { pqueue->read_buffer_usage += (size_t) ret; }
-        else { assert(false); }
+        //else { assert(false); }
 
         while (pqueue->read_buffer_usage > 0) {
-            Packet * packet = packet_queue_enqueue(pqueue);
-
-            size_t bytes_read = read_packet_from_buffer( packet, (char*)&pqueue->read_buffer, pqueue->read_buffer_usage);
+            size_t bytes_read = read_packet_from_buffer( packet_queue_enqueue(pqueue), (char*)&pqueue->read_buffer, pqueue->read_buffer_usage);
 
             if (bytes_read > 0) {
 
